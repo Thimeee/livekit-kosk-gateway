@@ -1,7 +1,7 @@
 # VTM — Project State & Decision Log
 
 **Single source of truth for where this project is and how it got here.**
-Last snapshot update: **2026-09-22**
+Last snapshot update: **2026-09-23**
 
 ---
 
@@ -169,8 +169,9 @@ Recorded so nobody re-opens these without new information.
 | ~~K-7~~ | ✅ **Fixed** in [D-021](#d-021). Every endpoint sits behind a policy; only `/health` and the two auth endpoints are anonymous. | `Features/` — all | — |
 | K-10 | No refresh tokens. A teller console open all shift outlives a 30 minute access token, and the front end has no way to renew without a fresh login. Deferred in [D-021](#d-021) rather than solved with a long-lived token. | `Features/Auth` | Medium |
 | ~~K-11~~ | ✅ **Superseded** by [D-027](#d-027). The signing key and both passwords moved to the gitignored `appsettings.Development.json`; a committed template records what a clone must supply. | — | — |
-| K-12 | The kiosk secret revoked in [D-026](#d-026) is still in git history. That secret is dead (revoked), but the repo is **public**, so the string is public too, but it must be rewritten out before this is pushed anywhere that matters. | git history | Medium — **High before pushing** |
+| ~~K-12~~ | ✅ **Closed** on 2026-09-23. The repository history was restarted from a single commit and the old GitHub repository deleted, so the commit carrying that secret no longer exists. The secret was revoked in any case. | — | — |
 | K-13 | The LiveKit key pair and `Auth:Local:SigningKey` published to GitHub in [D-027](#d-027) are **still the values in use**, and LiveKit is **reachable from the internet**, not just the LAN — both front ends connect to `wss://monapisam.nipunmcs.biz`. Confirmed exploitable: a token signed with the published key was accepted by that host (`ListRooms` → `{"rooms":[]}`), so anyone reading the repo can mint join tokens and enter a live session. Rotate the pair, the signing key, and `LivekitServer/livekit.yaml` with them. | `appsettings.Development.json`, `livekit.yaml` | **Critical** |
+| K-15 | `SessionCommands` and `SessionSubmissions` exist as tables and **nothing writes to either**. `SessionSubmissions.CoreReference` is the entire link to core banking, so until something writes it there is no record tying a video session to the transaction it produced. Blocked on deciding how a customer is identified — `Session` has no customer field at all. | `Features/Sessions`, `Domain/Sessions` | **High — this is the business core** |
 | ~~K-14~~ | ✅ **Fixed** in [D-030](#d-030). `LinkWatchdog` uses `navigator.onLine` (2ms) plus a media-stall check instead of waiting for the SDK. Fifteen seconds became one. | — | — |
 | ~~K-9~~ | ✅ **Fixed.** `room.enable_remote_unmute: true` added to `livekit.yaml` and the service restarted; unmute verified returning 200. | `LivekitServer/livekit.yaml` | Low |
 | ~~K-8~~ | ✅ **Fixed** in [D-015](#d-015). Sample scaffolding still present: `Features/Testing/GetTodos.cs`, the `Todo` record, and an empty `Domain/` folder. | API project | Low |
