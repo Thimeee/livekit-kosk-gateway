@@ -152,6 +152,13 @@ public static class AuthenticationSetup
 
             auth.AddPolicy(VtmPolicies.Staff, p =>
                 p.RequireClaim(VtmClaims.Role, VtmRoles.Teller, VtmRoles.Supervisor, VtmRoles.Admin));
+
+            // Either side of a call can be dropped, so either side can ask to come back.
+            // Listing two policies on an endpoint requires both of them, which is how the
+            // rejoin endpoint came to refuse every kiosk.
+            auth.AddPolicy(VtmPolicies.SessionParticipant, p =>
+                p.RequireClaim(VtmClaims.Role,
+                    VtmRoles.Kiosk, VtmRoles.Teller, VtmRoles.Supervisor, VtmRoles.Admin));
         });
 
         return services;

@@ -122,3 +122,7 @@ $RECYCLE.BIN/
 # Real local config: secrets live here, never in git.
 # Copy appsettings.Development.template.json to start.
 appsettings.Development.json
+
+# ── WPF kiosk shell ──────────────────────────────────────────
+vtm-kiosk-shell/bin/
+vtm-kiosk-shell/obj/

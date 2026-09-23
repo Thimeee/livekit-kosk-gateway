@@ -42,7 +42,9 @@ public class RejoinSessionEndpoint
 
         // Both sides of a call can be dropped, so both can ask to come back. Which token they
         // get is decided from their own claims, never from the request.
-        Policies(VtmPolicies.Kiosk, VtmPolicies.Staff);
+        //
+        // One policy, not two: listing two requires BOTH, which refused every kiosk with a 403.
+        Policies(VtmPolicies.SessionParticipant);
     }
 
     public override async Task HandleAsync(RejoinSessionRequest req, CancellationToken ct)
@@ -50,7 +52,14 @@ public class RejoinSessionEndpoint
         var session = await _db.Sessions
             .FirstOrDefaultAsync(s => s.RoomName == req.RoomName, ct);
 
-        if (session is null || session.Status == SessionStatus.Ended)
+        // An allow-list, not a check for Ended. A session ended before any teller accepted is
+        // Abandoned rather than Ended, and checking only for Ended let a kiosk rejoin one -
+        // it then sat on "Reconnecting..." forever instead of returning to its idle screen.
+        // Listing what IS rejoinable also means a terminal status added later cannot quietly
+        // become rejoinable by default.
+        var rejoinable = session?.Status is SessionStatus.Waiting or SessionStatus.Active;
+
+        if (session is null || !rejoinable)
         {
             // Nothing to rejoin. The caller should stop trying and go back to idle.
             await Send.NotFoundAsync(ct);

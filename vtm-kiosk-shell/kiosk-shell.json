@@ -1,0 +1,8 @@
+{
+  "kioskUrl": "http://localhost:4201",
+  "captureSource": "Entire screen",
+  "locked": false,
+  "devTools": false,
+  "fakeMedia": false,
+  "remoteDebuggingPort": 0
+}

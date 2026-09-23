@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>VtmKiosk</AssemblyName>
+    <RootNamespace>VtmKioskShell</RootNamespace>
+
+    <!-- Native AOT is off across this solution; the LiveKit SDK has reflection paths that fail
+         silently under trimming (PROJECT.md D-003). Nothing here needs it either. -->
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3485.44" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Settings live beside the exe so a branch can change the URL without a rebuild. -->
+    <None Update="kiosk-shell.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

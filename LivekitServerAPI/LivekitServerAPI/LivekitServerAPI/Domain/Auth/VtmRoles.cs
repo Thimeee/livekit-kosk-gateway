@@ -41,4 +41,14 @@ public static class VtmPolicies
     public const string Supervisor = "Supervisor";
     public const string Admin = "Admin";
     public const string Staff = "Staff";
+
+    /// <summary>
+    /// Anyone who can legitimately be in a session: a kiosk or any member of staff.
+    /// </summary>
+    /// <remarks>
+    /// This exists because <c>Policies(Kiosk, Staff)</c> requires <b>both</b>, not either, and a
+    /// kiosk is not staff - so every kiosk request was refused with 403. Found by calling the
+    /// rejoin endpoint rather than by reading it.
+    /// </remarks>
+    public const string SessionParticipant = "SessionParticipant";
 }
