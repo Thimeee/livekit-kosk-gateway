@@ -126,3 +126,4 @@ appsettings.Development.json
 # ── WPF kiosk shell ──────────────────────────────────────────
 vtm-kiosk-shell/bin/
 vtm-kiosk-shell/obj/
+vtm-kiosk-shell/webroot/

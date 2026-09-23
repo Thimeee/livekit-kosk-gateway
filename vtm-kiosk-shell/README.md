@@ -27,6 +27,33 @@ is refused, and any origin other than the configured one is refused outright.
 
 Later this is also where the card reader and the printer go, since a browser can reach neither.
 
+## Where the page comes from
+
+Two answers, and the shell does either.
+
+| | **Bundled** (`webRoot` set) | **Served** (`kioskUrl` only) |
+|---|---|---|
+| Web server for the page | **none** | one, reachable from every kiosk |
+| Updating the page | update every kiosk | one place, all kiosks follow |
+| Page server down | **kiosk still works** | kiosk shows nothing |
+| Installing | copy one folder | install, then point at the URL |
+
+**Bundled is the right default for a branch**, and it is the demo setup: the built Angular output
+sits in `webroot/` next to the executable and WebView2 serves it under `https://kiosk.vtm/`.
+
+That virtual host is not a network name and resolves nowhere — it exists so the page has a **real
+origin**. `file://` would not do: a file:// page has an opaque origin, so its calls to the API
+arrive cross-origin with a null `Origin` header and no CORS setting can allow them.
+
+The API must allow whichever origin is in use. `https://kiosk.vtm` is in the development CORS list
+for exactly this reason.
+
+```bash
+# put the built page inside the shell
+cd ../vtm-kiosk && npm run build
+cp -r dist/vtm-kiosk/browser ../vtm-kiosk-shell/bin/Release/net10.0-windows/webroot
+```
+
 ## Configuration
 
 `kiosk-shell.json`, beside the executable. Missing or malformed means the defaults — a kiosk must
@@ -34,7 +61,9 @@ still start and say what is wrong on screen, rather than not start at all.
 
 | Key | Default | |
 |---|---|---|
-| `kioskUrl` | `http://localhost:4201` | The page to host. Navigation anywhere else is blocked. |
+| `webRoot` | *(empty)* | Serve the page from this folder instead of fetching a URL. Relative to the executable. |
+| `virtualHost` | `kiosk.vtm` | The origin a bundled page is served under. Must not resolve on the network. |
+| `kioskUrl` | `http://localhost:4201` | Used only when `webRoot` is empty. Navigation anywhere else is blocked. |
 | `captureSource` | `Entire screen` | Must match a capture source name **exactly**. |
 | `userDataFolder` | `%LOCALAPPDATA%\VtmKiosk\WebView2` | Deliberately not the shared default, so the granted camera permission and this kiosk's state stay its own. |
 | `locked` | `false` | `true` on a real kiosk — removes the way out. |
@@ -78,6 +107,7 @@ the real launch arguments — not a browser a test started for itself:
 
 | | |
 |---|---|
+| Page served from inside the shell, **nothing serving it on the network** | `https://kiosk.vtm/index.html` |
 | Kiosk page loaded and device-authenticated | ✅ |
 | Camera inside WebView2, **no prompt answered** | **1280x720** |
 | Teller audio playing in the shell | **RMS 0.304** |

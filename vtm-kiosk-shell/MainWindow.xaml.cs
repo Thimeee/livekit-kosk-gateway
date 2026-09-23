@@ -95,7 +95,44 @@ public partial class MainWindow : Window
 
         core.NewWindowRequested += (_, args) => args.Handled = true;
 
-        core.Navigate(_config.KioskUrl);
+        core.Navigate(ResolveStartUrl(core));
+    }
+
+    /// <summary>
+    /// Where the page comes from, and the reason there are two answers.
+    /// </summary>
+    /// <remarks>
+    /// <b>Bundled</b> — the built Angular output ships inside this application and WebView2 serves
+    /// it from disk under a real origin. No web server is involved, so the kiosk still works when
+    /// nothing else on the network does, and installing a kiosk is copying one folder. Updating
+    /// the page means updating every kiosk.
+    ///
+    /// <b>Served</b> — WebView2 points at a URL. One place to update, every kiosk follows. But a
+    /// kiosk whose page server is unreachable shows nothing at all.
+    ///
+    /// The mapping gives a proper http origin rather than <c>file://</c>, which matters: a
+    /// file:// page has an opaque origin, so its requests to the API are cross-origin with a
+    /// null Origin header and no CORS configuration can allow them.
+    /// </remarks>
+    private string ResolveStartUrl(CoreWebView2 core)
+    {
+        if (string.IsNullOrWhiteSpace(_config.WebRoot)) return _config.KioskUrl;
+
+        var folder = Path.IsPathRooted(_config.WebRoot)
+            ? _config.WebRoot
+            : Path.Combine(AppContext.BaseDirectory, _config.WebRoot);
+
+        if (!File.Exists(Path.Combine(folder, "index.html")))
+        {
+            // Say which folder was looked in. "It did not start" is not a bug report.
+            Fail($"webRoot is set to \"{_config.WebRoot}\" but there is no index.html in:\n\n{folder}");
+            return "about:blank";
+        }
+
+        core.SetVirtualHostNameToFolderMapping(
+            _config.VirtualHost, folder, CoreWebView2HostResourceAccessKind.Allow);
+
+        return $"https://{_config.VirtualHost}/index.html";
     }
 
     private IEnumerable<string> BrowserArguments()
@@ -143,12 +180,21 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private bool IsOwnOrigin(string uri) =>
-        Uri.TryCreate(uri, UriKind.Absolute, out var parsed)
-        && Uri.TryCreate(_config.KioskUrl, UriKind.Absolute, out var home)
-        && parsed.Scheme == home.Scheme
-        && parsed.Host == home.Host
-        && parsed.Port == home.Port;
+    private bool IsOwnOrigin(string uri)
+    {
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed)) return false;
+
+        // When the page is bundled, "our origin" is the virtual host, not the configured URL.
+        if (!string.IsNullOrWhiteSpace(_config.WebRoot))
+        {
+            return parsed.Host.Equals(_config.VirtualHost, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return Uri.TryCreate(_config.KioskUrl, UriKind.Absolute, out var home)
+               && parsed.Scheme == home.Scheme
+               && parsed.Host == home.Host
+               && parsed.Port == home.Port;
+    }
 
     /// <summary>
     /// A way out, for the person installing the machine. Deliberately awkward: a customer will
@@ -183,6 +229,15 @@ public partial class MainWindow : Window
 public sealed record ShellConfig
 {
     public string KioskUrl { get; init; } = "http://localhost:4201";
+
+    /// <summary>
+    /// Serve the page from this folder instead of fetching <see cref="KioskUrl"/>.
+    /// Relative paths are taken from the executable's folder. Empty means use the URL.
+    /// </summary>
+    public string WebRoot { get; init; } = string.Empty;
+
+    /// <summary>The origin a bundled page is served under. Must not resolve on the network.</summary>
+    public string VirtualHost { get; init; } = "kiosk.vtm";
 
     /// <summary>Must match a capture source name exactly; "Entire screen" is the usual one.</summary>
     public string CaptureSource { get; init; } = "Entire screen";
