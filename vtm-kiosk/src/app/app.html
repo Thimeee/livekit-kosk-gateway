@@ -1,0 +1,110 @@
+@let s = kiosk.screen();
+
+<main class="kiosk" [class.kiosk--call]="s === 'incall'">
+
+  <!-- ── Booting ─────────────────────────────────────────────── -->
+  @if (s === 'booting') {
+    <section class="centre">
+      <div class="spinner" aria-hidden="true"></div>
+      <p class="lead">{{ kiosk.statusText() }}</p>
+    </section>
+  }
+
+  <!-- ── Not enrolled / unreachable ──────────────────────────── -->
+  @if (s === 'error') {
+    <section class="centre">
+      <h1 class="title">This kiosk is not ready</h1>
+      <p class="lead lead--error">{{ kiosk.errorText() }}</p>
+      <button class="btn btn--ghost" (click)="kiosk.boot()">Try again</button>
+    </section>
+  }
+
+  <!-- ── Idle: the one thing a customer sees ─────────────────── -->
+  @if (s === 'idle') {
+    <section class="centre">
+      <h1 class="title">Talk to a teller</h1>
+      <p class="lead">Press the button and someone will be with you shortly.</p>
+
+      @if (kiosk.errorText()) {
+        <p class="lead lead--error">{{ kiosk.errorText() }}</p>
+      }
+
+      <button class="btn btn--start" (click)="kiosk.startSession()">
+        Start
+      </button>
+    </section>
+  }
+
+  <!-- ── Waiting for a teller ────────────────────────────────── -->
+  @if (s === 'waiting') {
+    <section class="centre">
+      <div class="preview preview--waiting">
+        <vtm-video-tile [track]="kiosk.localVideo()" [muted]="true" [mirror]="true" />
+      </div>
+
+      <div class="spinner" aria-hidden="true"></div>
+      <p class="lead" aria-live="polite">{{ kiosk.statusText() }}</p>
+
+      <button class="btn btn--ghost" (click)="kiosk.endSession()">Cancel</button>
+    </section>
+  }
+
+  <!-- ── In the call ─────────────────────────────────────────── -->
+  @if (s === 'incall') {
+    <section class="call">
+      <div class="call__remote">
+        @if (kiosk.remoteVideo()) {
+          <vtm-video-tile [track]="kiosk.remoteVideo()" />
+        } @else {
+          <!-- On the call, camera off. Not the same thing as nobody being there. -->
+          <div class="call__novideo">
+            <span class="call__initial">{{ initial() }}</span>
+            <p>Camera off</p>
+          </div>
+        }
+
+        @if (kiosk.tellerName()) {
+          <span class="call__name">{{ kiosk.tellerName() }}</span>
+        }
+      </div>
+
+      <!-- The teller's voice. Nothing to look at, but the call is useless without it. -->
+      <vtm-audio-sink [track]="kiosk.remoteAudio()" />
+
+      <div class="preview preview--pip">
+        <vtm-video-tile [track]="kiosk.localVideo()" [muted]="true" [mirror]="true" />
+      </div>
+
+      @if (kiosk.reconnecting()) {
+        <div class="reconnecting">
+          <div class="spinner" aria-hidden="true"></div>
+          <p aria-live="polite">Reconnecting…</p>
+        </div>
+      }
+
+      @if (showsSharing() && kiosk.sharing()) {
+        <span class="tag-share">Your screen is visible to the teller</span>
+      }
+
+      @if (kiosk.needsAudioGesture()) {
+        <button class="audio-gate" (click)="kiosk.enableAudio()">
+          Tap to hear the teller
+        </button>
+      }
+
+      <div class="controls">
+        <!-- The only thing a customer can do here. It asks; it does not hang up. The teller
+             may be part way through something, and ending their call from this side is the
+             kiosk's decision to make least of all. -->
+        <button
+          class="btn btn--round"
+          [class.btn--asked]="kiosk.exitRequested()"
+          [disabled]="kiosk.exitRequested()"
+          (click)="kiosk.requestExit()"
+        >
+          {{ kiosk.exitRequested() ? 'The teller has been told' : "I'm finished" }}
+        </button>
+      </div>
+    </section>
+  }
+</main>

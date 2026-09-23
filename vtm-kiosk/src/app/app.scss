@@ -1,0 +1,212 @@
+:host {
+  display: block;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.kiosk {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.kiosk--call { padding: 0; }
+
+.centre {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  text-align: center;
+  max-width: 34rem;
+}
+
+.title {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.lead {
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--ink-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.lead--error { color: var(--danger); }
+
+/* Kiosk buttons are pressed with a finger, often by someone standing. */
+.btn {
+  font: inherit;
+  font-size: 1.125rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 1rem 2rem;
+  min-height: 3.5rem;
+  cursor: pointer;
+  background: var(--surface-2);
+  color: var(--ink);
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.btn:active { transform: scale(0.97); }
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+.btn--start {
+  background: var(--accent);
+  color: #fff;
+  font-size: 1.5rem;
+  padding: 1.5rem 5rem;
+  min-height: 5rem;
+}
+
+.btn--ghost { background: transparent; border-color: var(--border); }
+.btn--round { min-width: 7rem; }
+.btn--off { background: var(--surface-3); color: var(--ink-muted); }
+.btn--on  { background: var(--accent); color: #fff; }
+.btn--end { background: var(--danger); color: #fff; }
+
+/* ── In-call layout ──────────────────────────────────────────── */
+
+.call {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.call__remote { position: absolute; inset: 0; }
+
+.call__name {
+  position: absolute;
+  left: 1.5rem;
+  bottom: 7.5rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 1rem;
+}
+
+.preview {
+  border-radius: 1rem;
+  overflow: hidden;
+  background: #000;
+}
+
+.preview--waiting {
+  width: min(28rem, 70vw);
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--border);
+}
+
+.preview--pip {
+  position: absolute;
+  right: 1.5rem;
+  top: 1.5rem;
+  width: clamp(9rem, 18vw, 15rem);
+  aspect-ratio: 4 / 3;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+}
+
+.controls {
+  position: absolute;
+  left: 50%;
+  bottom: 1.75rem;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(8px);
+}
+
+/* Browsers refuse to play audio until a gesture. This is that gesture. */
+.audio-gate {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgb(0 0 0 / 0.65);
+  color: #fff;
+  font: inherit;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2s; }
+  .btn { transition: none; }
+}
+
+.call__novideo {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 1rem;
+  background: var(--surface-2);
+  color: var(--ink-muted);
+}
+
+.call__initial {
+  display: grid;
+  place-items: center;
+  width: 7rem;
+  height: 7rem;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--ink);
+  font-size: 3rem;
+  font-weight: 600;
+}
+
+/* The one control a customer has. It reports, then stops being a button. */
+.btn--asked {
+  background: var(--surface-3);
+  color: var(--ink-muted);
+  cursor: default;
+}
+
+.tag-share {
+  position: absolute;
+  left: 50%;
+  top: 1.5rem;
+  transform: translateX(-50%);
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-size: 0.9375rem;
+}
+
+/* Being dropped is not the same as the call ending. Say so, rather than freezing. */
+.reconnecting {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 1rem;
+  background: rgb(0 0 0 / 0.7);
+  color: #fff;
+  font-size: 1.25rem;
+}

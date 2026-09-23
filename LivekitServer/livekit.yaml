@@ -1,0 +1,16 @@
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+keys:
+  devkey: "this_is_a_very_long_secret_key_for_livekit_development_123456"
+
+logging:
+  json: false       
+  level: debug
+
+# Server-side unmute is refused unless this is on ("remote unmute not enabled").
+# Muting works without it; unmuting does not.
+room:
+  enable_remote_unmute: true

@@ -1,0 +1,21 @@
+@use '@thimi/muk-kit/styles/global-styles';
+
+/* The kit ships neutral on purpose. One brand colour, all four parts - setting only
+   the fill leaves the label at a contrast that was checked against the old one. */
+:root {
+  --muk-primary-user: #1d4ed8;
+  --muk-primary-contrast: #ffffff;
+  --muk-primary-lighter: #eff6ff;
+  --muk-primary-soft-text: #1e40af;
+}
+
+/* Dark is not light-but-lighter: -lighter has to become a DEEP tint or every soft
+   surface glows against the page. */
+.muk-theme-dark,
+:root[data-theme='dark'] {
+  --muk-primary-user: #60a5fa;
+  --muk-primary-lighter: #172554;
+  --muk-primary-soft-text: #bfdbfe;
+}
+
+html, body { margin: 0; min-height: 100%; }

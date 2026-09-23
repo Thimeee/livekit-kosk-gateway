@@ -1,0 +1,191 @@
+@let me = teller.me();
+
+<muk-page-header
+  [title]="teller.inCall() ? 'In session' : 'Waiting customers'"
+  [subtitle]="me ? me.displayName + ' · ' + me.branchId : ''"
+  [sticky]="true"
+>
+  <div slot="actions" class="head">
+    <!-- The connection state is not decoration: a teller whose feed has dropped
+         stops receiving the ring and would otherwise never know. -->
+    <!-- Two different connections, and a teller needs to tell them apart: the ring comes over
+         SignalR, the call over LiveKit. Losing one does not mean losing the other. -->
+    <muk-badge [variant]="teller.connected() ? 'success' : 'danger'" size="sm" shape="pill">
+      {{ teller.connected() ? 'Queue' : 'Queue offline' }}
+    </muk-badge>
+
+    @if (teller.reconnecting()) {
+      <muk-badge variant="warning" size="sm" shape="pill">Rejoining the call…</muk-badge>
+    }
+
+    @if (!teller.inCall()) {
+      <label class="avail">
+        <muk-switch
+          [ngModel]="teller.available()"
+          (ngModelChange)="teller.setAvailable($event)"
+          name="available"
+        />
+        <span>{{ teller.available() ? 'Available' : 'Away' }}</span>
+      </label>
+    }
+
+    <muk-button buttonStyle="ghost" size="sm" (clicked)="signOut()">Sign out</muk-button>
+  </div>
+</muk-page-header>
+
+<main class="body">
+
+  <!-- ── The queue ───────────────────────────────────────────── -->
+  @if (!teller.inCall()) {
+    @if (teller.waitingCount() === 0) {
+      <muk-empty-state
+        title="Nobody is waiting"
+        description="You will be notified the moment a customer starts a session."
+      />
+    } @else {
+      <div class="queue">
+        @for (entry of teller.queue(); track entry.roomName) {
+          <muk-card variant="bordered">
+            <div class="entry">
+              <muk-avatar size="lg" color="primary">
+                {{ entry.kioskName.charAt(0) }}
+              </muk-avatar>
+
+              <div class="entry__text">
+                <strong>{{ entry.kioskName }}</strong>
+                <span class="muted">
+                  {{ entry.kioskId }}@if (showsBranch()) { · {{ entry.branchId }} }
+                </span>
+              </div>
+
+              <muk-badge [variant]="waitVariant(entry.waitingSeconds)" size="sm" shape="pill">
+                {{ wait(entry.waitingSeconds) }}
+              </muk-badge>
+
+              <muk-button variant="primary" (clicked)="accept(entry)">Accept</muk-button>
+            </div>
+          </muk-card>
+        }
+      </div>
+    }
+  }
+
+  <!-- ── The call ────────────────────────────────────────────── -->
+  @if (teller.inCall()) {
+    <section class="call">
+      <div class="call__main">
+        <!-- The kiosk screen takes the big tile when it is being shared: that is
+             what the teller is being asked to look at. -->
+        @if (teller.remoteScreen()) {
+          <vtm-video-tile [track]="teller.remoteScreen()" />
+          <span class="tag">Kiosk screen</span>
+        } @else if (teller.remoteVideo() && teller.kioskCamOn()) {
+          <vtm-video-tile [track]="teller.remoteVideo()" />
+          <span class="tag">{{ teller.customerName() || 'Customer' }}</span>
+        } @else {
+          <!-- A muted video track stays subscribed, so the tile would otherwise show a frozen
+               frame. Camera off has to look like camera off. -->
+          <div class="novideo">
+            <muk-avatar size="xl" color="neutral">{{ initial() }}</muk-avatar>
+            <p>Camera off</p>
+          </div>
+        }
+
+        @if (teller.needsAudioGesture()) {
+          <button class="audio-gate" (click)="teller.enableAudio()">
+            Click to hear the customer
+          </button>
+        }
+      </div>
+
+      <!-- The customer's voice. Nothing to look at, but the call is useless without it. -->
+      <vtm-audio-sink [track]="teller.remoteAudio()" />
+
+      <aside class="call__side">
+        @if (teller.exitRequested()) {
+          <muk-alert variant="warning" [dismissible]="false">
+            The customer has asked to finish.
+          </muk-alert>
+        }
+
+        <!-- When the screen is on the big tile the customer still needs to be visible. -->
+        @if (teller.remoteScreen() && teller.remoteVideo() && teller.kioskCamOn()) {
+          <div class="tile">
+            <vtm-video-tile [track]="teller.remoteVideo()" />
+            <span class="tag tag--sm">{{ teller.customerName() || 'Customer' }}</span>
+          </div>
+        }
+
+        <div class="tile">
+          <vtm-video-tile [track]="teller.localVideo()" [muted]="true" [mirror]="true" />
+          <span class="tag tag--sm">You</span>
+        </div>
+
+        <!-- Two groups, because they answer different questions: what is the customer's
+             kiosk doing, and what am I sending them. -->
+        <div class="group">
+          <h3 class="group__title">Kiosk</h3>
+
+          <muk-button
+            [buttonStyle]="teller.kioskMicOn() ? 'solid' : 'outline'"
+            [block]="true"
+            [loading]="teller.busyCommand() === 'mic'"
+            (clicked)="teller.setKioskMic(!teller.kioskMicOn())"
+          >
+            {{ teller.kioskMicOn() ? 'Mute customer' : 'Unmute customer' }}
+          </muk-button>
+
+          <muk-button
+            [buttonStyle]="teller.kioskCamOn() ? 'solid' : 'outline'"
+            [block]="true"
+            [loading]="teller.busyCommand() === 'cam'"
+            (clicked)="teller.setKioskCam(!teller.kioskCamOn())"
+          >
+            {{ teller.kioskCamOn() ? 'Turn their camera off' : 'Turn their camera on' }}
+          </muk-button>
+
+          <muk-button
+            [buttonStyle]="teller.kioskSharing() ? 'solid' : 'outline'"
+            [block]="true"
+            [loading]="teller.busyCommand() === 'share'"
+            (clicked)="teller.setKioskScreenShare(!teller.kioskSharing())"
+          >
+            {{ teller.kioskSharing() ? 'Stop viewing their screen' : 'View their screen' }}
+          </muk-button>
+        </div>
+
+        <div class="group">
+          <h3 class="group__title">You</h3>
+
+          <muk-button
+            [buttonStyle]="teller.micOn() ? 'solid' : 'outline'"
+            [block]="true"
+            (clicked)="teller.toggleMic()"
+          >
+            {{ teller.micOn() ? 'Mute me' : 'Unmute me' }}
+          </muk-button>
+
+          <muk-button
+            [buttonStyle]="teller.camOn() ? 'solid' : 'outline'"
+            [block]="true"
+            (clicked)="teller.toggleCam()"
+          >
+            {{ teller.camOn() ? 'Hide my video' : 'Show my video' }}
+          </muk-button>
+
+          <muk-button
+            [buttonStyle]="teller.sharingOwn() ? 'solid' : 'outline'"
+            [block]="true"
+            (clicked)="teller.toggleOwnShare()"
+          >
+            {{ teller.sharingOwn() ? 'Stop sharing my screen' : 'Share my screen' }}
+          </muk-button>
+
+          <muk-button variant="danger" [block]="true" (clicked)="end()">
+            End session
+          </muk-button>
+        </div>
+      </aside>
+    </section>
+  }
+</main>

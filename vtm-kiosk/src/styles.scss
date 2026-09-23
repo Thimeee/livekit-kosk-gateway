@@ -1,0 +1,31 @@
+/* Kiosk palette. Dark by default: a lobby screen showing a video call should not
+   be a white rectangle, and the customer is looking at faces, not at chrome. */
+:root {
+  --bg: #0b0d10;
+  --surface-2: #1a1e24;
+  --surface-3: #23282f;
+  --ink: #f2f4f7;
+  --ink-muted: #9aa3ae;
+  --border: #2c323a;
+  --accent: #2f6feb;
+  --danger: #e5484d;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  /* A kiosk is a fixed screen: nothing should ever scroll or rubber-band. */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* Nothing on a kiosk is selectable or long-pressable. */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}

@@ -1,0 +1,124 @@
+# ─────────────────────────────────────────────────────────────
+#  VTM monorepo
+#  Tracked:  LivekitServerAPI/, docs/, CLAUDE.md,
+#            LivekitServer/livekit.yaml
+#  Future:   kiosk (WPF) and teller (Angular) apps go at the root
+# ─────────────────────────────────────────────────────────────
+
+
+# ── Reference checkouts — third-party source, not ours ───────
+# Kept on disk for reference; documented in docs/01-03.
+livekit-server-sdk-dotnet-main/
+client-sdk-js-main/
+
+
+# ── Downloads and vendor binaries ────────────────────────────
+setup-zip/
+
+# LiveKit server: keep the config, drop the 56MB binary and tooling
+LivekitServer/*
+!LivekitServer/livekit.yaml
+
+
+# ── .NET ─────────────────────────────────────────────────────
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+publish/
+[Pp]ublish[Pp]rofiles/*.user
+artifacts/
+
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.pidb
+*.svclog
+*.scc
+
+.vs/
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+
+# Test / coverage
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.coveragexml
+TestResults/
+
+# Runtime output
+logs/
+*.log
+
+
+# ── Node / Angular (teller app, future) ──────────────────────
+node_modules/
+dist/
+tmp/
+out-tsc/
+.angular/
+.npm/
+.pnpm-store/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+
+
+# ── Secrets and local overrides ──────────────────────────────
+# NOTE: appsettings.json IS tracked and currently contains the LiveKit
+# API secret — see docs/PROJECT.md D-006 / K-5. These patterns cover
+# the local-override files so they never get committed by accident.
+appsettings.Local.json
+appsettings.*.Local.json
+*.secrets.json
+secrets.json
+.env
+.env.*
+!.env.example
+
+
+# ── IDE / OS ─────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── Local database ───────────────────────────────────────────
+# Schema lives in EF migrations; the data does not belong in git.
+*.mdf
+*.ldf
+
+# ── Angular apps ─────────────────────────────────────────────
+.angular/
+
+# Real local config: secrets live here, never in git.
+# Copy appsettings.Development.template.json to start.
+appsettings.Development.json

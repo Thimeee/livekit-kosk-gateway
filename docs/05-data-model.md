@@ -1,0 +1,270 @@
+# Data model & service boundary
+
+What this API owns, what it does not, and the tables that follow from that.
+
+The boundary decision is recorded as [D-017](PROJECT.md#d-017). This document is the detail.
+
+---
+
+## 1. Two APIs
+
+The VTM system is two backends, not one:
+
+```
+   ┌──────────────────────┐        ┌──────────────────────────┐
+   │  Kiosk  (WPF)        │───────▶│  VTM Session API         │  sessions, queue,
+   └──────────────────────┘        │  (LivekitServerAPI)      │  kiosks, tellers,
+                                   │                          │  tokens, audit
+   ┌──────────────────────┐───────▶└────────────┬─────────────┘
+   │  Teller (Angular)    │                     │ Twirp
+   │                      │        ┌────────────▼─────────────┐
+   │                      │        │  LiveKit server          │
+   └──────────┬───────────┘        └──────────────────────────┘
+              │
+              │                    ┌──────────────────────────┐
+              └───────────────────▶│  Core Banking API        │  customers, KYC,
+                                   │  (the bank's, existing)  │  accounts, transfers
+                                   └──────────────────────────┘
+```
+
+**The clients talk to both directly.** This API never proxies the core banking API — doing so
+would put customer PII through a service that has no need to see it, couple every core API change
+to a passthrough change here, and add a hop and a failure mode for nothing.
+
+> **Exception:** if the bank's core cannot be reached from a browser (a common network-zone
+> restriction), a gateway is needed. That gateway is a separate component. Do not give this API
+> that second job, or it becomes the thing this boundary exists to prevent.
+
+### The link between them
+
+`sessionId` — the LiveKit room name. When the teller submits an operation, the Angular app sends
+it to the **core** API as part of the request:
+
+```json
+POST /api/transfers
+{ "accountFrom": "...", "amount": 5000,
+  "channel": "VTM", "sessionId": "vtm-3e2d023fbcbf", "tellerId": "T-07" }
+```
+
+The core system stores it alongside the transaction. The linkage then lives in the **authoritative**
+record rather than depending on a client remembering to report it afterwards. Join on `sessionId`
+when the full picture is needed.
+
+---
+
+## 2. The dividing line
+
+> **Does this exist because VTM exists?**
+
+| Data | Exists without VTM? | Owner |
+|---|---|---|
+| Kiosks, enrollments | No | **This API** |
+| Sessions, timings, history | No | **This API** |
+| Queue entries | No | **This API** |
+| Teller availability, branch, skills | No | **This API** |
+| Session events, command log | No | **This API** |
+| Recording metadata | No | **This API** |
+| Customers, KYC documents | Yes | Core banking |
+| Accounts, balances | Yes | Core banking |
+| Transactions, ledger | Yes | Core banking |
+| Products, rates, fees | Yes | Core banking |
+
+Note the line is drawn by **data ownership, not technology**. The queue has nothing to do with
+LiveKit, but it belongs here because a queue entry is meaningless without a session. Drawing the
+line at "LiveKit vs not-LiveKit" would put the queue in the wrong place.
+
+Teller *identity* is owned by the identity provider. The `Tellers` table here is a projection
+holding VTM-specific attributes only.
+
+---
+
+## 3. Tables
+
+### 3.1 Devices and staff
+
+**`Kiosks`**
+
+| Column | Type | Notes |
+|---|---|---|
+| `KioskId` | string, PK | e.g. `K-01` |
+| `BranchId` | string | |
+| `DisplayName` | string | |
+| `Status` | enum | `Provisioned` / `Active` / `Suspended` / `Retired` |
+| `EnrolledAt` | datetimeoffset? | |
+| `LastSeenAt` | datetimeoffset? | drives a "kiosk offline" alert |
+| `CreatedAt`, `UpdatedAt` | datetimeoffset | |
+
+**`KioskCredentials`** — kept separate from `Kiosks` so rotation and revocation are clean
+operations rather than edits to the device row.
+
+| Column | Type | Notes |
+|---|---|---|
+| `Id` | guid, PK | |
+| `KioskId` | FK → `Kiosks` | |
+| `SecretHash` | string | **hashed.** Never store the device secret |
+| `CreatedAt` | datetimeoffset | |
+| `ExpiresAt` | datetimeoffset? | |
+| `RevokedAt` | datetimeoffset? | revoke rather than delete, so the audit survives |
+
+**`Tellers`** — *not* the bank's HR record.
+
+| Column | Type | Notes |
+|---|---|---|
+| `TellerId` | string, PK | matches the `sub` claim from the identity provider |
+| `DisplayName` | string | |
+| `BranchId` | string | |
+| `Status` | enum | `Offline` / `Available` / `Busy` / `Away` |
+| `MaxConcurrent` | int | usually 1 |
+| `LastSeenAt` | datetimeoffset? | |
+
+**`TellerSkills`** *(later, for routing)* — `(TellerId, Skill)` composite key;
+`Skill` is e.g. `account-opening`, `loans`, `general`.
+
+### 3.2 Sessions
+
+**`Sessions`** — the central table.
+
+| Column | Type | Notes |
+|---|---|---|
+| `SessionId` | guid, PK | |
+| `RoomName` | string, **unique** | `vtm-3e2d023fbcbf`, generated by this API |
+| `RoomSid` | string? | LiveKit's `RM_...`, filled once the room exists |
+| `KioskId` | FK → `Kiosks` | |
+| `BranchId` | string | denormalised for reporting |
+| `TellerId` | FK → `Tellers`, null | null until a teller accepts |
+| `Status` | enum | `Waiting` / `Active` / `Ending` / `Ended` / `Abandoned` |
+| `CreatedAt` | datetimeoffset | customer arrived |
+| `AcceptedAt` | datetimeoffset? | teller accepted |
+| `ConnectedAt` | datetimeoffset? | both parties actually in the room |
+| `EndedAt` | datetimeoffset? | |
+| `EndReason` | enum? | `Completed` / `CustomerLeft` / `TellerEnded` / `Timeout` / `Error` |
+| `WaitSeconds`, `DurationSeconds` | int? | derived, stored so reports do not recompute them |
+
+Index `RoomName` (unique), and `(Status, BranchId)` for the queue query.
+
+**`SessionEvents`** — append-only timeline. Webhook handlers write here.
+
+| Column | Type | Notes |
+|---|---|---|
+| `Id` | bigint identity, PK | |
+| `SessionId` | FK → `Sessions` | |
+| `OccurredAt` | datetimeoffset | |
+| `Source` | enum | `Api` / `Webhook` / `Kiosk` / `Teller` |
+| `EventType` | string | `session.created`, `participant.joined`, `track.published`, … |
+| `ActorId` | string? | teller or kiosk id |
+| `Payload` | string? | small JSON, no PII |
+
+**`SessionCommands`** — the Class 2 commands from [D-010](PROJECT.md#d-010). Separate from
+`SessionEvents` because these have a request/response lifecycle and carry legal weight: a teller
+triggering a card read or a print is an action with a real-world consequence, recorded whether or
+not a submission follows.
+
+| Column | Type | Notes |
+|---|---|---|
+| `Id` | guid, PK | |
+| `SessionId` | FK → `Sessions` | |
+| `Command` | string | `card-read`, `print-receipt`, `capture-signature` |
+| `RequestedBy` | string | teller id |
+| `RequestedAt` | datetimeoffset | |
+| `Status` | enum | `Pending` / `Succeeded` / `Failed` / `TimedOut` |
+| `CompletedAt` | datetimeoffset? | |
+| `ResultPayload` | string? | |
+| `ErrorMessage` | string? | |
+
+Because these go out over `Twirp.PerformRpc` ([D-011](PROJECT.md#d-011)) the kiosk's actual result
+comes back, so the record says *succeeded*, not merely *attempted*.
+
+**`SessionSubmissions`** — the link to core banking.
+
+| Column | Type | Notes |
+|---|---|---|
+| `Id` | guid, PK | |
+| `SessionId` | FK → `Sessions` | |
+| `TellerId` | string | |
+| `SubmittedAt` | datetimeoffset | |
+| `OperationType` | string | `transfer`, `address-update`, … |
+| `CoreReference` | string | the core system's transaction id |
+| `Status` | enum | `Submitted` / `Confirmed` / `Failed` |
+
+⚠️ **No amounts. No account numbers. No customer identifiers.** The reference only. This lets a
+session timeline show *that* a transfer was submitted without this API knowing *what* it was.
+
+### 3.3 Operations
+
+**`WebhookDeliveries`** — idempotency.
+
+| Column | Type | Notes |
+|---|---|---|
+| `EventId` | string, PK | LiveKit's `evt.Id` |
+| `ReceivedAt` | datetimeoffset | |
+| `EventType` | string | |
+
+**LiveKit redelivers webhooks.** Without a dedupe check a retried `room_finished` ends the same
+session twice and corrupts the duration. Check this table before processing.
+
+**`Recordings`** *(once `livekit-egress` is deployed)* — `Id`, `SessionId`, `EgressId`, `Status`,
+`StartedAt`, `EndedAt`, `FileUri`, `SizeBytes`.
+
+---
+
+## 4. Everything this API does
+
+### A · Auth
+- Teller login, or validation of an externally issued JWT
+- Kiosk device token exchange
+- Token refresh
+- Sync the `Tellers` row on a teller's first login
+
+### B · Device and staff administration
+- Register, enroll, suspend, retire a kiosk
+- Rotate and revoke kiosk credentials
+- List kiosks with last-seen health
+- Teller sets availability
+
+### C · Queue and ring — *not a LiveKit feature, entirely ours*
+- Kiosk enqueues a customer, receiving the session and its kiosk token in one round trip
+- Waiting list with wait time, branch and kiosk
+- **Ring-out** to available tellers over SignalR or SSE. LiveKit cannot carry this: the teller is
+  not in a room yet.
+- Teller accepts, is assigned, and receives a teller token
+- Decline or timeout returns the entry to the queue
+- Customer leaves before being served → `Abandoned`
+
+### D · Live session control
+- Session detail with participants
+- Status transitions
+- Mute / unmute a track — `MutePublishedTrack`
+- Remove a participant — `RemoveParticipant`
+- Change permissions at runtime — `UpdateParticipant`
+- Server-originated data message — `SendData`
+- Class 2 command with a result — `Twirp.PerformRpc`
+- Transfer to another teller — `MoveParticipant`
+- Supervisor monitoring — `ForwardParticipant` plus a hidden token
+- End the session
+
+### E · Webhooks from LiveKit
+`room_started`, `room_finished`, `participant_joined`, `participant_left`, `track_published`,
+`egress_*`
+
+⭐ **These are the authoritative source for session timings.** Never trust a client's claim that it
+joined or left. `ConnectedAt`, `EndedAt` and `DurationSeconds` come from here.
+
+### F · Audit and reporting
+- Record a submission reference
+- Session timeline: events + commands + submissions
+- Session history and search
+- Reports: wait time, handle time, teller utilisation, abandonment rate
+
+### G · Operations
+- `/health`
+- Recording start / stop / list *(later)*
+
+---
+
+## 5. What is never here
+
+❌ Customers ❌ Accounts ❌ Balances ❌ Transactions ❌ Ledger ❌ KYC documents
+❌ Products, rates, fees
+
+A `CoreReference` string is the whole of the relationship. If a table here ever needs an account
+number to do its job, the boundary has been crossed and something belongs on the other side of it.

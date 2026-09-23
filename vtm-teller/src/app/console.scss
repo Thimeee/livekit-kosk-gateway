@@ -1,0 +1,125 @@
+:host { display: block; min-height: 100dvh; }
+
+.head { display: flex; align-items: center; gap: 0.75rem; }
+
+.avail {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--muk-text-muted);
+}
+
+.body { padding: 1.5rem; }
+
+/* ── Queue ─────────────────────────────────────────────────── */
+
+.queue { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.entry {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 1rem;
+}
+
+.entry__text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.muted { color: var(--muk-text-muted); font-size: 0.875rem; }
+
+@media (max-width: 40rem) {
+  .entry { grid-template-columns: auto 1fr; row-gap: 0.75rem; }
+  .entry > muk-button { grid-column: 1 / -1; }
+}
+
+/* ── Call ──────────────────────────────────────────────────── */
+
+.call {
+  display: grid;
+  grid-template-columns: 1fr 20rem;
+  gap: 1rem;
+  height: calc(100dvh - 9rem);
+}
+
+@media (max-width: 60rem) {
+  .call { grid-template-columns: 1fr; height: auto; }
+}
+
+.call__main {
+  position: relative;
+  background: #000;
+  border-radius: var(--muk-radius-lg, 0.75rem);
+  overflow: hidden;
+  min-height: 24rem;
+}
+
+.call__main vtm-video-tile { position: absolute; inset: 0; }
+
+.call__side { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.tile {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: var(--muk-radius, 0.5rem);
+  overflow: hidden;
+}
+
+.tile vtm-video-tile { position: absolute; inset: 0; }
+
+.tag {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-size: 0.8125rem;
+}
+
+.tag--sm { font-size: 0.75rem; left: 0.5rem; bottom: 0.5rem; }
+
+.novideo {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.75rem;
+  color: #9aa3ae;
+}
+
+.audio-gate {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgb(0 0 0 / 0.65);
+  color: #fff;
+  font: inherit;
+  font-size: 1.125rem;
+  cursor: pointer;
+}
+
+/* Two groups, so a teller never has to work out whose microphone a button means. */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--muk-border, #e5e7eb);
+  border-radius: var(--muk-radius, 0.5rem);
+}
+
+.group + .group { margin-top: 0.75rem; }
+
+.group__title {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muk-text-muted);
+}
+
+.call__side { overflow-y: auto; }

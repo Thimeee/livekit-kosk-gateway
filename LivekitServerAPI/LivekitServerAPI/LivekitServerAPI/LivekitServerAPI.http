@@ -1,0 +1,480 @@
+### =====================================================================
+###  LivekitServerAPI — manual test suite
+###
+###  Run the API first:  dotnet run   (listens on http://localhost:5065)
+###  Each request notes what a correct response looks like.
+###
+###  Endpoints as of D-018:  GET /health,  POST /api/token,
+###                          /api/sessions (create, list, get, status, end),
+###                          participant control (mute, remove, permissions,
+###                          notify, transfer, monitor)
+###
+###  Every request here was executed on 2026-09-18 against the live LiveKit
+###  server with real participants joined, and returned the status noted
+###  against it. No exceptions outstanding.
+### =====================================================================
+
+@host = http://localhost:5065
+@room = vtm-session-42
+
+
+### =====================================================================
+###  1. HEALTH
+### =====================================================================
+
+### 1.1  Health — LiveKit reachable
+#    Expect 200
+#    { "success": true, "data": { "status": "healthy", "liveKit": "up",
+#                                 "activeRooms": 0, "checkMs": <n> } }
+#
+#    This makes a real ListRooms call, so it also proves ServerUrl, ApiKey
+#    and ApiSecret are all correct.
+GET {{host}}/health
+Accept: application/json
+
+### 1.2  Health — LiveKit unreachable
+#    Stop livekit-server.exe (or point LiveKit:ServerUrl at a dead port) and
+#    re-run 1.1.
+#    Expect 503
+#    { "success": false, "status": 503,
+#      "message": "LiveKit server is unreachable.",
+#      "data": { "status": "degraded", "liveKit": "down" } }
+
+
+### =====================================================================
+###  2. TOKENS — happy paths
+###
+###  Decode any token at https://jwt.io and check the "video" claim.
+###  exp - iat must be 900 (15 min, LiveKit:TokenTtl).
+### =====================================================================
+
+### 2.1  Kiosk token
+#    Expect 200, identity "kiosk-K-01"
+#    video: roomJoin true, roomAdmin FALSE, roomCreate FALSE,
+#           roomRecord FALSE, recorder FALSE, hidden false,
+#           canPublishSources [camera, microphone, screen_share]
+POST {{host}}/api/token
+Content-Type: application/json
+
+{
+  "role": "kiosk",
+  "roomName": "{{room}}",
+  "participantName": "K-01"
+}
+
+### 2.2  Teller token
+#    Expect 200, identity "teller-T-07"
+#    video: roomAdmin TRUE  <-- the only role that gets it
+#           roomCreate FALSE, roomRecord FALSE, recorder FALSE  (K-3)
+#    Room creation and recording are API-side operations, never browser-side.
+POST {{host}}/api/token
+Content-Type: application/json
+
+{
+  "role": "teller",
+  "roomName": "{{room}}",
+  "participantName": "T-07"
+}
+
+### 2.3  Supervisor token
+#    Expect 200, identity "supervisor-S-01"
+#    video: hidden TRUE, canSubscribe true,
+#           canPublish FALSE, canPublishData FALSE, canPublishSources []
+#    Observes a live session without appearing in it.
+POST {{host}}/api/token
+Content-Type: application/json
+
+{
+  "role": "supervisor",
+  "roomName": "{{room}}",
+  "participantName": "S-01"
+}
+
+### 2.4  Role is case-insensitive
+#    Expect 200 — same result as 2.2.
+POST {{host}}/api/token
+Content-Type: application/json
+
+{
+  "role": "TELLER",
+  "roomName": "{{room}}",
+  "participantName": "T-07"
+}
+
+
+### =====================================================================
+###  3. TOKENS — validation failures
+###
+###  All should return 400 with the custom envelope:
+###  { "success": false, "status": 400,
+###    "message": "Validation failed for the request.",
+###    "errors": { "<field>": [ "<message>" ] } }
+### =====================================================================
+
+### 3.1  Unknown role
+#    Expect 400, errors.role = [ "Role must be one of: kiosk, teller, supervisor." ]
+#    Nothing outside the enum can ever produce a token.
+POST {{host}}/api/token
+Content-Type: application/json
+
+{
+  "role": "administrator",
+  "roomName": "{{room}}",
+  "participantName": "X-01"
+}
+
+### 3.2  Empty role and room — one message per field
+#    Expect 400 with exactly:
+#    "errors": { "role":     [ "Role is required." ],
+#                "roomName": [ "Room name is required." ] }
+#    One message per field: the validator uses Cascade(CascadeMode.Stop), so an
+#    empty value reports "required" without also reporting "must be one of".
+POST {{host}}/api/token
+Content-Type: application/json
+
+{
+  "role": "",
+  "roomName": "",
+  "participantName": "X-01"
+}
+
+### 3.3  Missing participant name
+#    Expect 400, errors.participantName = ["Participant name is required."]
+POST {{host}}/api/token
+Content-Type: application/json
+
+{
+  "role": "kiosk",
+  "roomName": "{{room}}",
+  "participantName": ""
+}
+
+### 3.4  Room name over 128 characters
+#    Expect 400, errors.roomName = ["Room name must be 128 characters or fewer."]
+POST {{host}}/api/token
+Content-Type: application/json
+
+{
+  "role": "kiosk",
+  "roomName": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "participantName": "K-01"
+}
+
+### 3.5  Malformed JSON body
+#    Expect 400 — the request never reaches the handler.
+POST {{host}}/api/token
+Content-Type: application/json
+
+{ "role": "kiosk", "roomName": }
+
+
+### =====================================================================
+###  4. REGRESSION CHECKS
+### =====================================================================
+
+### 4.1  Sample endpoint is gone (K-8)
+#    Expect 404. If this returns 200 the old scaffolding is back.
+GET {{host}}/todos
+Accept: application/json
+
+### 4.2  Unknown route
+#    Expect 404.
+GET {{host}}/api/does-not-exist
+Accept: application/json
+
+### 4.3  Wrong method on the token endpoint
+#    Expect 405.
+GET {{host}}/api/token
+Accept: application/json
+
+
+### =====================================================================
+###  5. OPENAPI  (Development only)
+### =====================================================================
+
+### 5.1  OpenAPI document
+#    Expect 200 in Development, 404 in Production.
+GET {{host}}/openapi/v1.json
+Accept: application/json
+
+
+### =====================================================================
+###  6. STARTUP VALIDATION  (not HTTP — run from a terminal)
+###
+###  These must fail the BOOT, not the first request. Run from
+###  bin/Release/net10.0 and confirm each refuses to start with the
+###  message quoted below.
+###
+###  6.1  ws:// management URL
+###       LiveKit__ServerUrl="ws://localhost:7880" ./LivekitServerAPI.exe
+###       -> OptionsValidationException: "LiveKit:ServerUrl must be an
+###          absolute http:// or https:// URL..."
+###
+###  6.2  Secret shorter than 32 bytes
+###       LiveKit__ApiSecret="tooshort" ./LivekitServerAPI.exe
+###       -> OptionsValidationException: "LiveKit:ApiSecret must be at
+###          least 32 bytes..."
+###
+###  6.3  TTL out of range
+###       LiveKit__TokenTtl="12:00:00" ./LivekitServerAPI.exe
+###       -> OptionsValidationException: "LiveKit:TokenTtl must be greater
+###          than zero and no more than 6 hours."
+### =====================================================================
+
+
+### =====================================================================
+###  6b. SESSION LIFECYCLE
+###
+###  Run 6b.1 first and paste the roomName it returns into @session below -
+###  room names are generated server-side and are not predictable.
+### =====================================================================
+
+@session = vtm-session-42
+
+### 6b.1  Create a session
+#    Expect 201
+#    data: roomName "vtm-<12 hex>", roomSid "RM_...", status "Waiting",
+#          kioskIdentity "kiosk-K-01", kioskToken, tokenExpiresAt (+15 min)
+#
+#    Check the token's "video" claim: its "room" must equal the roomName
+#    returned here. The room name is generated server-side precisely so a
+#    caller cannot request a token into somebody else's session.
+POST {{host}}/api/sessions
+Content-Type: application/json
+
+{
+  "kioskId": "K-01",
+  "branchId": "colombo-01"
+}
+
+### 6b.2  Create without a branch
+#    Expect 201, branchId null in the listing.
+POST {{host}}/api/sessions
+Content-Type: application/json
+
+{
+  "kioskId": "K-02"
+}
+
+### 6b.3  Create with no kiosk id
+#    Expect 400, errors.kioskId = [ "Kiosk id is required." ]
+POST {{host}}/api/sessions
+Content-Type: application/json
+
+{
+  "kioskId": ""
+}
+
+### 6b.4  List active sessions
+#    Expect 200, count matching the number of live rooms, each with
+#    roomName, status, kioskId, branchId, numParticipants.
+GET {{host}}/api/sessions
+Accept: application/json
+
+### 6b.5  Session detail
+#    Expect 200 with session + participants[]. participants is empty until
+#    a client actually joins with the token.
+GET {{host}}/api/sessions/{{session}}
+Accept: application/json
+
+### 6b.6  Detail for an unknown room
+#    Expect 404.
+GET {{host}}/api/sessions/vtm-does-not-exist
+Accept: application/json
+
+### 6b.7  Move the session to active
+#    Expect 200, data.status "Active".
+#    This writes room metadata, so every connected participant receives
+#    RoomMetadataChanged - the kiosk and teller UIs react without polling.
+PATCH {{host}}/api/sessions/{{session}}/status
+Content-Type: application/json
+
+{
+  "status": "active"
+}
+
+### 6b.8  Invalid status
+#    Expect 400, errors.status = [ "Status must be one of: waiting, active, ending." ]
+PATCH {{host}}/api/sessions/{{session}}/status
+Content-Type: application/json
+
+{
+  "status": "finished"
+}
+
+### 6b.9  Status change on an unknown room
+#    Expect 404.
+PATCH {{host}}/api/sessions/vtm-does-not-exist/status
+Content-Type: application/json
+
+{
+  "status": "active"
+}
+
+### 6b.10  End the session
+#    Expect 200, data.roomName + endedAt. Destroys the room and disconnects
+#    everyone still in it.
+DELETE {{host}}/api/sessions/{{session}}
+
+### 6b.11  Ending it twice
+#    Expect 404 - LiveKit's DeleteRoom is happy to delete nothing, but this
+#    API checks first so a caller is told the session was already gone.
+DELETE {{host}}/api/sessions/{{session}}
+
+
+### =====================================================================
+###  6c. PARTICIPANT CONTROL
+###
+###  These need a real participant in the room. Without one every call
+###  correctly returns 404, which proves the guard but not the operation.
+###  Join with a client (or the headless probe used in D-018) first, then
+###  set @identity to whatever GET /api/sessions/{{session}} reports.
+### =====================================================================
+
+@identity = kiosk-K-01
+
+### 6c.1  Mute every track the participant publishes
+#    Expect 200, data.tracksAffected = the number of tracks they publish.
+#    Omitting trackSid is what a teller means by "mute the customer".
+POST {{host}}/api/sessions/{{session}}/participants/{{identity}}/mute
+Content-Type: application/json
+
+{
+  "muted": true
+}
+
+### 6c.2  Unmute
+#    Expect 200. Requires room.enable_remote_unmute: true in livekit.yaml —
+#    now set, and the service restarted. Without it this returns 412
+#    "remote unmute not enabled". Muting never needs the flag; unmuting does.
+POST {{host}}/api/sessions/{{session}}/participants/{{identity}}/mute
+Content-Type: application/json
+
+{
+  "muted": false
+}
+
+### 6c.3  Mute one named track
+#    Expect 200, tracksAffected 1. trackSid comes from GET /api/sessions/{{session}}.
+#    A trackSid the participant does not own returns 404: LiveKit itself accepts an
+#    unknown sid and reports success, so the endpoint checks before passing it on.
+POST {{host}}/api/sessions/{{session}}/participants/{{identity}}/mute
+Content-Type: application/json
+
+{
+  "muted": true,
+  "trackSid": "TR_REPLACE-ME"
+}
+
+### 6c.4  Revoke publishing — the read-only waiting state
+#    Expect 200. Subscription is deliberately left alone: the customer keeps
+#    seeing and hearing the teller, they just cannot publish.
+#    The handler clones the existing permission rather than building a new one,
+#    so Hidden and CanPublishSources survive.
+PATCH {{host}}/api/sessions/{{session}}/participants/{{identity}}
+Content-Type: application/json
+
+{
+  "canPublish": false,
+  "canPublishData": false
+}
+
+### 6c.5  Restore publishing
+PATCH {{host}}/api/sessions/{{session}}/participants/{{identity}}
+Content-Type: application/json
+
+{
+  "canPublish": true,
+  "canPublishData": true
+}
+
+### 6c.6  Notify one participant
+#    Expect 200, data.recipients = 1. Fire and forget - the client receives
+#    RoomEvent.DataReceived. Use a Class 2 command when the result matters.
+POST {{host}}/api/sessions/{{session}}/notify
+Content-Type: application/json
+
+{
+  "topic": "vtm-state",
+  "payload": "{\"type\":\"queue\",\"position\":3}",
+  "toIdentities": [ "kiosk-K-01" ]
+}
+
+### 6c.7  Broadcast to the room
+#    Expect 200, data.recipients = the room's participant count.
+POST {{host}}/api/sessions/{{session}}/notify
+Content-Type: application/json
+
+{
+  "topic": "vtm-state",
+  "payload": "session ending in 30 seconds"
+}
+
+### 6c.8  Empty topic
+#    Expect 400, errors.topic = [ "Topic is required." ]
+POST {{host}}/api/sessions/{{session}}/notify
+Content-Type: application/json
+
+{
+  "topic": "",
+  "payload": "x"
+}
+
+### 6c.9  Monitor — hidden supervisor token
+#    Expect 200. Decode data.supervisorToken: video.hidden must be true,
+#    canSubscribe true, canPublish false, and room must equal {{session}}.
+#    NOT ForwardParticipant - that returns "not implemented" on the
+#    self-hosted server (D-018). The supervisor joins the same room unseen.
+POST {{host}}/api/sessions/{{session}}/monitor
+Content-Type: application/json
+
+{
+  "supervisorId": "S-01"
+}
+
+### 6c.10  Transfer to another teller
+#    Expect 200. The current teller is removed; the customer stays put with
+#    their media untouched. data.fromTellerIdentity is null if the session
+#    was unattended. Decode data.tellerToken: roomAdmin true, room = {{session}}.
+POST {{host}}/api/sessions/{{session}}/transfer
+Content-Type: application/json
+
+{
+  "toTellerId": "T-09"
+}
+
+### 6c.11  Remove the participant
+#    Expect 200. They can rejoin while their token is valid - that is why the
+#    TTL is 15 minutes. To end the session outright, delete the room (6b.10).
+DELETE {{host}}/api/sessions/{{session}}/participants/{{identity}}
+
+### 6c.12  Any control call once they have left
+#    Expect 404 on mute, remove and permissions alike.
+POST {{host}}/api/sessions/{{session}}/participants/{{identity}}/mute
+Content-Type: application/json
+
+{
+  "muted": true
+}
+
+
+### =====================================================================
+###  7. NOT YET IMPLEMENTED — keep in step with docs/04-api-surface.md
+###
+###  K-7 (CRITICAL): every endpoint here is still AllowAnonymous. Anyone
+###  who can reach this API can create sessions, mint a teller or
+###  hidden-supervisor token for any room, and end other people's sessions.
+###  Add auth tests here the moment these endpoints are protected.
+###
+###  Step 3 — queue & ring (our own logic, not LiveKit's):
+###    POST /api/queue/enqueue
+###    GET  /api/queue
+###    POST /api/queue/{room}/accept
+###
+###  Step 4 — Class 2 commands (Twirp.PerformRpc):
+###    POST /api/sessions/{room}/control/card-read
+###    POST /api/sessions/{room}/control/print
+###
+###  Step 5 — webhooks:
+###    POST /api/webhooks/livekit
+### =====================================================================
