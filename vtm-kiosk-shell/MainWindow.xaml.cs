@@ -95,6 +95,10 @@ public partial class MainWindow : Window
 
         core.NewWindowRequested += (_, args) => args.Handled = true;
 
+        // Before the page runs, not after: the kiosk asks who it is during boot, so settings
+        // that arrive later would be too late.
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(BuildInjectedConfig());
+
         core.Navigate(ResolveStartUrl(core));
     }
 
@@ -133,6 +137,40 @@ public partial class MainWindow : Window
             _config.VirtualHost, folder, CoreWebView2HostResourceAccessKind.Allow);
 
         return $"https://{_config.VirtualHost}/index.html";
+    }
+
+    /// <summary>
+    /// Hands the page this machine's settings, so one Angular build serves every kiosk.
+    /// </summary>
+    /// <remarks>
+    /// A kiosk id compiled into the bundle would mean a build per machine. The identity of a
+    /// device belongs on the device, which is this file - and it is the only place it lives,
+    /// rather than being repeated in a second config beside the page.
+    ///
+    /// The secret travels the same way. Today it sits in <c>kiosk-shell.json</c> because this is
+    /// a demo; a real kiosk keeps it under DPAPI or the TPM (PROJECT.md D-021). When that
+    /// changes, only this method changes - the page never knows the difference.
+    /// </remarks>
+    private string BuildInjectedConfig()
+    {
+        var settings = new Dictionary<string, object?>
+        {
+            ["kioskId"] = _config.KioskId,
+            ["apiBaseUrl"] = _config.ApiBaseUrl,
+            ["liveKitUrl"] = _config.LiveKitUrl,
+            ["showScreenShareIndicator"] = _config.ShowScreenShareIndicator,
+            ["deviceSecret"] = _config.DeviceSecret,
+        };
+
+        // Only send what is actually configured, so the page keeps its own default for the rest
+        // instead of being handed an empty string that overrides it.
+        var present = settings
+            .Where(kv => kv.Value is not (null or ""))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(present);
+
+        return $"window.__vtmKiosk = {json};";
     }
 
     private IEnumerable<string> BrowserArguments()
@@ -229,6 +267,27 @@ public partial class MainWindow : Window
 public sealed record ShellConfig
 {
     public string KioskUrl { get; init; } = "http://localhost:4201";
+
+    /// <summary>Which kiosk this machine is. The one setting that differs per device.</summary>
+    public string KioskId { get; init; } = string.Empty;
+
+    /// <summary>The control API. Empty leaves the page's own default in place.</summary>
+    public string ApiBaseUrl { get; init; } = string.Empty;
+
+    /// <summary>The LiveKit ws:// or wss:// URL. Empty leaves the page's default.</summary>
+    public string LiveKitUrl { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The enrolment secret, handed to the page at boot.
+    /// </summary>
+    /// <remarks>
+    /// Here because this is a demo. A real kiosk receives it once at enrolment and keeps it
+    /// where the machine can protect it - DPAPI or the TPM. See PROJECT.md D-021.
+    /// </remarks>
+    public string DeviceSecret { get; init; } = string.Empty;
+
+    /// <summary>Tell the customer when the teller is viewing their screen. Usually a compliance call.</summary>
+    public bool ShowScreenShareIndicator { get; init; }
 
     /// <summary>
     /// Serve the page from this folder instead of fetching <see cref="KioskUrl"/>.

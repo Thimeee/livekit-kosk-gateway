@@ -23,4 +23,60 @@
     <None Update="kiosk-shell.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!--
+    Builds the kiosk page into webroot/, so `dotnet publish` produces a complete kiosk rather
+    than an application that still needs someone to remember a second command.
+
+    Only on publish: a `dotnet build` during development should not sit through an ng build,
+    and a developer running the page from `ng serve` does not want a stale copy bundled.
+    Skip it with /p:BuildKioskPage=false.
+  -->
+  <PropertyGroup>
+    <KioskPageProject>$(MSBuildProjectDirectory)/../vtm-kiosk</KioskPageProject>
+    <KioskPageDist>$(KioskPageProject)/dist/vtm-kiosk/browser</KioskPageDist>
+    <BuildKioskPage Condition="'$(BuildKioskPage)' == ''">true</BuildKioskPage>
+  </PropertyGroup>
+
+  <Target Name="BuildKioskPage" BeforeTargets="PrepareForPublish"
+          Condition="'$(BuildKioskPage)' == 'true'">
+
+    <Error Condition="!Exists('$(KioskPageProject)/package.json')"
+           Text="The kiosk page is not at $(KioskPageProject). Publish with /p:BuildKioskPage=false to skip bundling it." />
+
+    <Message Importance="high" Text="Building the kiosk page..." />
+
+    <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="$(KioskPageProject)"
+          Condition="!Exists('$(KioskPageProject)/node_modules')" />
+
+    <Exec Command="npm run build" WorkingDirectory="$(KioskPageProject)" />
+
+    <Error Condition="!Exists('$(KioskPageDist)/index.html')"
+           Text="The kiosk page built but produced no index.html in $(KioskPageDist)." />
+  </Target>
+
+  <Target Name="CopyKioskPage" AfterTargets="Publish"
+          Condition="'$(BuildKioskPage)' == 'true'">
+
+    <ItemGroup>
+      <!--
+        kiosk.secret is excluded deliberately. Angular copies public/ into dist/, so a secret
+        left there for browser development would otherwise be bundled into every kiosk install.
+        Under the shell the secret is injected from kiosk-shell.json and never travels with the
+        page.
+      -->
+      <KioskPageFiles Include="$(KioskPageDist)/**/*" Exclude="$(KioskPageDist)/kiosk.secret" />
+    </ItemGroup>
+
+    <!-- PublishDir does not reliably end with a separator; without this the copy once landed
+         in a folder called "publishwebroot". -->
+    <PropertyGroup>
+      <KioskWebRoot>$([MSBuild]::EnsureTrailingSlash('$(PublishDir)'))webroot</KioskWebRoot>
+    </PropertyGroup>
+
+    <Copy SourceFiles="@(KioskPageFiles)"
+          DestinationFiles="@(KioskPageFiles->'$(KioskWebRoot)/%(RecursiveDir)%(Filename)%(Extension)')" />
+
+    <Message Importance="high" Text="Bundled @(KioskPageFiles->Count()) files into webroot/" />
+  </Target>
+
 </Project>

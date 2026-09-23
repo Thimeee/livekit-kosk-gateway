@@ -1,6 +1,14 @@
 {
-  "kioskUrl": "http://localhost:4201",
+  "webRoot": "webroot",
+  "virtualHost": "kiosk.vtm",
+
+  "kioskId": "",
+  "apiBaseUrl": "",
+  "liveKitUrl": "",
+  "deviceSecret": "",
+
   "captureSource": "Entire screen",
+  "showScreenShareIndicator": false,
   "locked": false,
   "devTools": false,
   "fakeMedia": false,

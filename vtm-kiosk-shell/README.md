@@ -54,6 +54,38 @@ cd ../vtm-kiosk && npm run build
 cp -r dist/vtm-kiosk/browser ../vtm-kiosk-shell/bin/Release/net10.0-windows/webroot
 ```
 
+## One build, many kiosks
+
+A `kioskId` compiled into the Angular bundle would mean a build per machine. So the page resolves
+its settings at runtime, from the first of these that answers:
+
+1. **`window.__vtmKiosk`** — injected by this shell before the page runs, from `kiosk-shell.json`
+2. **`kiosk-config.json`** beside the page — for a plain browser, where there is no shell
+3. **The page's own defaults** — a developer's machine
+
+The identity of a device lives on the device, in one file, and the same `webroot/` serves every
+kiosk in the estate. Proved by pointing two configurations at one bundle: with `kioskId: "K-02"`
+the teller's queue showed **K-02 / Kandy City Lobby 2**, while the bundle's own default was still
+`K-01`.
+
+**The secret travels the same way**, and deliberately does not travel with the page: Angular
+copies `public/` into `dist/`, so a `kiosk.secret` left there for browser development would
+otherwise be bundled into every kiosk install. The publish step excludes it.
+
+Today the secret sits in `kiosk-shell.json` because this is a demo. A real kiosk keeps it where the
+machine can protect it — DPAPI or the TPM ([D-021](../docs/PROJECT.md#d-021)). When that changes,
+only the shell changes; the page never knows the difference.
+
+## Building a kiosk
+
+```bash
+dotnet publish -c Release -o publish
+```
+
+That builds the Angular page, bundles it into `publish/webroot/`, and leaves a folder you can copy
+to a machine. `/p:BuildKioskPage=false` skips the page build; a plain `dotnet build` never runs it,
+so development does not sit through an `ng build` it did not ask for.
+
 ## Configuration
 
 `kiosk-shell.json`, beside the executable. Missing or malformed means the defaults — a kiosk must
@@ -61,6 +93,11 @@ still start and say what is wrong on screen, rather than not start at all.
 
 | Key | Default | |
 |---|---|---|
+| `kioskId` | *(empty)* | **Which kiosk this machine is.** The one setting that differs per device. |
+| `apiBaseUrl` | *(empty)* | Empty leaves the page's own default. |
+| `liveKitUrl` | *(empty)* | Empty leaves the page's own default. |
+| `deviceSecret` | *(empty)* | The enrolment secret. Injected, never bundled. |
+| `showScreenShareIndicator` | `false` | Tell the customer when the teller is viewing their screen. Usually a compliance call. |
 | `webRoot` | *(empty)* | Serve the page from this folder instead of fetching a URL. Relative to the executable. |
 | `virtualHost` | `kiosk.vtm` | The origin a bundled page is served under. Must not resolve on the network. |
 | `kioskUrl` | `http://localhost:4201` | Used only when `webRoot` is empty. Navigation anywhere else is blocked. |

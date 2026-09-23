@@ -10,7 +10,7 @@ import {
 import { CommandChannel, TOPICS } from '@vtm/shared/command-channel';
 import { LinkWatchdog } from '@vtm/shared/link-watchdog';
 import type { KioskState } from '@vtm/shared/vtm-commands';
-import { KIOSK_CONFIG, readDeviceSecret } from './kiosk.config';
+import { deviceSecret, kioskConfig, loadKioskConfig } from './kiosk.config';
 
 export type KioskScreen = 'booting' | 'idle' | 'waiting' | 'incall' | 'error';
 
@@ -77,6 +77,9 @@ export class KioskService {
   /** True while reconnecting after being dropped, so the screen can say so. */
   readonly reconnecting = signal(false);
 
+  /** Read from the settings at boot; see KioskConfig for why it is off by default. */
+  readonly showScreenShareIndicator = signal(false);
+
   /** Browsers block audio until a gesture. When this is true the UI has to ask for one. */
   readonly needsAudioGesture = signal(false);
 
@@ -85,19 +88,23 @@ export class KioskService {
   // ── Device authentication ────────────────────────────────────────────
 
   async boot(): Promise<void> {
-    const secret = await readDeviceSecret();
+    // Settings first: which kiosk this is, and where the API lives, are not known until now.
+    await loadKioskConfig();
+    this.showScreenShareIndicator.set(kioskConfig().showScreenShareIndicator);
+
+    const secret = deviceSecret();
 
     if (!secret) {
       this.fail(
-        'This kiosk has not been enrolled. Ask an administrator to enrol it and put the ' +
-          'secret in public/kiosk.secret.',
+        'This kiosk has not been enrolled. Ask an administrator to enrol it, then give the ' +
+          'secret to the shell in kiosk-shell.json, or to a browser in public/kiosk.secret.',
       );
       return;
     }
 
     try {
       const auth = await this.post<{ accessToken: string }>('/api/auth/kiosk', {
-        kioskId: KIOSK_CONFIG.kioskId,
+        kioskId: kioskConfig().kioskId,
         secret,
       });
 
@@ -120,7 +127,7 @@ export class KioskService {
       const session = await this.post<{
         roomName: string;
         kioskToken: string;
-      }>('/api/sessions', { kioskId: KIOSK_CONFIG.kioskId }, this.apiToken);
+      }>('/api/sessions', { kioskId: kioskConfig().kioskId }, this.apiToken);
 
       this.roomName.set(session.roomName);
       await this.join(session.kioskToken);
@@ -224,7 +231,7 @@ export class KioskService {
     this.registerCommands();
     this.channel.attach(room);
 
-    await room.connect(KIOSK_CONFIG.liveKitUrl, token, {
+    await room.connect(kioskConfig().liveKitUrl, token, {
       // How long to wait for a peer connection to come UP. It does not govern how long the SDK
       // takes to notice one has gone DOWN - measured: lowering this changed nothing about the
       // ~15s before a cut cable is reported. That delay is tracked as K-14.
@@ -417,7 +424,7 @@ export class KioskService {
   // ── Plumbing ─────────────────────────────────────────────────────────
 
   private async post<T>(path: string, body: unknown, token?: string): Promise<T> {
-    const res = await fetch(KIOSK_CONFIG.apiBaseUrl + path, {
+    const res = await fetch(kioskConfig().apiBaseUrl + path, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -430,7 +437,7 @@ export class KioskService {
   }
 
   private async del(path: string, token: string): Promise<void> {
-    await fetch(KIOSK_CONFIG.apiBaseUrl + path, {
+    await fetch(kioskConfig().apiBaseUrl + path, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     });
