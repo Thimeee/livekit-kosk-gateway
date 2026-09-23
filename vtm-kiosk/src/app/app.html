@@ -1,4 +1,34 @@
 @let s = kiosk.screen();
+@let hosted = host.hosted;
+
+@if (hosted) {
+  <!-- Embedded in a host application: this page is a video surface, nothing more. Every
+       control lives in the host's own UI, next to the rest of its buttons. -->
+  <main class="embed">
+    @if (s === 'incall' && kiosk.remoteVideo()) {
+      <vtm-video-tile [track]="kiosk.remoteVideo()" />
+      <vtm-audio-sink [track]="kiosk.remoteAudio()" />
+
+      @if (kiosk.tellerName()) {
+        <span class="embed__name">{{ kiosk.tellerName() }}</span>
+      }
+    } @else {
+      <div class="embed__waiting">
+        @if (s === 'waiting' || s === 'booting' || kiosk.reconnecting()) {
+          <div class="spinner" aria-hidden="true"></div>
+        }
+        <p aria-live="polite">{{ embedMessage() }}</p>
+      </div>
+    }
+
+    @if (kiosk.reconnecting() && s === 'incall') {
+      <div class="embed__reconnecting">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Reconnecting…</p>
+      </div>
+    }
+  </main>
+} @else {
 
 <main class="kiosk" [class.kiosk--call]="s === 'incall'">
 
@@ -108,3 +138,5 @@
     </section>
   }
 </main>
+
+}

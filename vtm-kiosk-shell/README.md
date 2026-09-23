@@ -3,6 +3,65 @@
 The WPF application a kiosk actually runs. It is a full-screen window hosting the kiosk page in
 WebView2, and nothing else.
 
+## The shape
+
+A kiosk screen is small, and the banking application owns it. So the teller does not take the
+screen — a **small window** appears beside your UI showing the teller, and nothing else.
+
+```
+┌──────────────────────────────────────┐
+│  Your kiosk application    ┌───────┐ │
+│                            │teller │ │  ← WebView2, teller only
+│  Accounts, transfers…      └───────┘ │
+│                                      │
+│  [ Talk to a teller ]  [ I'm done ]  │  ← every control is yours
+└──────────────────────────────────────┘
+```
+
+**No control appears in the call window.** A customer already has your buttons in front of them;
+a second place to look for the same thing is a way to lose them.
+
+## What to copy
+
+Three files. The rest of this project is a demonstration of using them.
+
+| | |
+|---|---|
+| `TellerCall.cs` | What your application talks to |
+| `TellerCallWindow.cs` | The small window it opens |
+| `ShellConfig.cs` | Settings, read from `kiosk-shell.json` |
+
+```csharp
+_call = new TellerCall(ShellConfig.Load());
+_call.StateChanged += (_, s) => Dispatcher.Invoke(() => Status.Text = s.Describe());
+
+await _call.PrepareAsync(this);   // at startup: loads and authenticates quietly
+await _call.StartAsync(this);     // "talk to a teller"
+await _call.EndAsync();           // "I'm finished"
+```
+
+`CallState` tells you what to render: `Screen` is `booting`, `idle`, `waiting`, `incall` or
+`error`; `Describe()` gives a line fit for your screen; `Reconnecting` and `NeedsAudioGesture`
+are the two that need a response from you rather than just a label.
+
+`PrepareAsync` is worth calling as your application starts. The page authenticates the device on
+load, so doing it up front means the first press is answered at once — and a kiosk that has not
+been enrolled says so before a customer tries.
+
+`MainWindow.xaml.cs` in this project is the whole of a host: three calls and a `Render` method.
+
+## How the two halves talk
+
+WebView2's own host/page channel. The page becomes a video surface with no UI of its own.
+
+| Direction | |
+|---|---|
+| Host → page | `{"type":"start"}`, `{"type":"end"}`, `{"type":"enableAudio"}` |
+| Page → host | one state message per change — screen, status, teller name, reconnecting, audio gesture |
+
+The page notices it is hosted (`window.chrome.webview` exists) and drops its own chrome. The same
+build still runs standalone in a browser with all its screens, which is what the browser demo uses.
+
 ## Why it exists
 
 The page does the work. This is here for the things a browser tab cannot do — and the first of
@@ -145,6 +204,11 @@ the real launch arguments — not a browser a test started for itself:
 | | |
 |---|---|
 | Page served from inside the shell, **nothing serving it on the network** | `https://kiosk.vtm/index.html` |
+| Popup carries **no controls of its own** | 0 buttons |
+| Host told the call is waiting | `screen: "waiting"` |
+| Host told the call connected | `screen: "incall"`, teller `"teller1"` |
+| Teller visible in the popup | 320x180 |
+| Host told the call ended | `screen: "idle"` |
 | Kiosk page loaded and device-authenticated | ✅ |
 | Camera inside WebView2, **no prompt answered** | **1280x720** |
 | Teller audio playing in the shell | **RMS 0.304** |
