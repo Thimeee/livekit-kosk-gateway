@@ -37,6 +37,23 @@
         </Border>
 
         <StackPanel Grid.Row="2">
+            <!-- Shown whenever the teller is viewing this screen, beside the other controls, so
+                 the customer can see it and stop it without hunting for the browser's own bar.
+                 That bar still appears too: it is the browser's disclosure and is left alone. -->
+            <Border x:Name="ShareIndicator" Visibility="Collapsed" Margin="0,0,0,14"
+                    Background="#2a1215" BorderBrush="#e5484d" BorderThickness="1"
+                    CornerRadius="8" Padding="14,10">
+                <DockPanel LastChildFill="True">
+                    <Button DockPanel.Dock="Right" Content="Stop sharing" Click="OnStopShareClick"
+                            Padding="18,8" FontSize="14" Background="#e5484d" Foreground="White"
+                            BorderThickness="0" Cursor="Hand" />
+                    <Ellipse Width="10" Height="10" Fill="#e5484d" Margin="0,0,10,0"
+                             VerticalAlignment="Center" />
+                    <TextBlock Text="Your screen is being shared with the teller"
+                               Foreground="#f2f4f7" FontSize="15" VerticalAlignment="Center" />
+                </DockPanel>
+            </Border>
+
             <TextBlock x:Name="Status" Text="Starting…"
                        Foreground="#9aa3ae" FontSize="15" Margin="0,0,0,14" />
 

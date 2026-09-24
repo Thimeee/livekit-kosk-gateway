@@ -50,6 +50,16 @@ been enrolled says so before a customer tries.
 
 `MainWindow.xaml.cs` in this project is the whole of a host: three calls and a `Render` method.
 
+## When the teller views the screen
+
+`CallState.Sharing` is true while the teller is viewing the kiosk screen. Show it in your own UI —
+the demo puts *"Your screen is being shared with the teller"* and a **Stop sharing** button beside
+*I'm finished*. `StopSharingAsync()` ends the share and the teller is told, exactly as when the
+browser's own Stop sharing is used.
+
+The browser's *"is sharing your screen"* bar still appears as well. It is the browser's disclosure
+to the customer and this project does not hide it — see PROJECT.md D-033.
+
 ## How the two halves talk
 
 WebView2's own host/page channel. The page becomes a video surface with no UI of its own.

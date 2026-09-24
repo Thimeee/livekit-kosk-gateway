@@ -79,6 +79,9 @@ public partial class MainWindow : Window
         FinishButton.IsEnabled = true;
     }
 
+    private async void OnStopShareClick(object sender, RoutedEventArgs e) =>
+        await _call.StopSharingAsync();
+
     private async void OnRetryClick(object sender, RoutedEventArgs e)
     {
         RetryButton.IsEnabled = false;
@@ -113,5 +116,7 @@ public partial class MainWindow : Window
             : new SolidColorBrush(Color.FromRgb(0x9a, 0xa3, 0xae));
 
         AudioButton.Visibility = state.NeedsAudioGesture ? Visibility.Visible : Visibility.Collapsed;
+
+        ShareIndicator.Visibility = state.Sharing ? Visibility.Visible : Visibility.Collapsed;
     }
 }

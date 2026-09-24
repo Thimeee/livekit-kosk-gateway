@@ -102,6 +102,13 @@ public sealed class TellerCall : IAsyncDisposable
         _window?.SendAsync(new { type = "retry" }) ?? Task.CompletedTask;
 
     /// <summary>
+    /// The customer stopping the screen share from your own button. The teller is told, exactly
+    /// as when the browser's own Stop sharing is used.
+    /// </summary>
+    public Task StopSharingAsync() =>
+        _window?.SendAsync(new { type = "stopShare" }) ?? Task.CompletedTask;
+
+    /// <summary>
     /// Lets audio play. Browsers refuse until a gesture, and a gesture on your button counts —
     /// call this from the click handler, not from a timer.
     /// </summary>
@@ -152,6 +159,10 @@ public sealed record CallState
     /// <summary>Audio is blocked until a gesture. Offer a button that calls EnableAudioAsync.</summary>
     [JsonPropertyName("needsAudioGesture")]
     public bool NeedsAudioGesture { get; init; }
+
+    /// <summary>The teller is viewing this kiosk's screen. Say so in your own UI.</summary>
+    [JsonPropertyName("sharing")]
+    public bool Sharing { get; init; }
 
     public bool InCall => Screen == "incall";
 

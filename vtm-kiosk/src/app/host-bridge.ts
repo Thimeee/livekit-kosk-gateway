@@ -18,6 +18,7 @@ type HostCommand =
   | { type: 'start' }
   | { type: 'end' }
   | { type: 'retry' }
+  | { type: 'stopShare' }
   | { type: 'enableAudio' };
 
 /** What the host is told. One message per change, never a stream. */
@@ -32,6 +33,11 @@ export interface HostState {
   reconnecting: boolean;
   /** True while the browser is refusing to play audio until someone clicks. */
   needsAudioGesture: boolean;
+  /**
+   * True while the teller is viewing this screen. A host that hides the browser's own
+   * "is sharing your screen" bar must show its own indicator whenever this is true.
+   */
+  sharing: boolean;
 }
 
 interface WebView2Bridge {
@@ -82,6 +88,12 @@ export class HostBridge {
         await this.kiosk.boot();
         break;
 
+      case 'stopShare':
+        // The customer's own stop, from the host's button. It goes the same way as the
+        // browser's Stop sharing, so the teller is told.
+        await this.kiosk.stopSharing();
+        break;
+
       case 'enableAudio':
         // Must come from a real gesture on the host's side, forwarded here.
         await this.kiosk.enableAudio();
@@ -110,6 +122,7 @@ export class HostBridge {
       tellerName: this.kiosk.tellerName(),
       reconnecting: this.kiosk.reconnecting(),
       needsAudioGesture: this.kiosk.needsAudioGesture(),
+      sharing: this.kiosk.sharing(),
     };
 
     this.bridge?.postMessage(JSON.stringify(state));

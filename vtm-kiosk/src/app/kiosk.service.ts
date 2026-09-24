@@ -370,6 +370,17 @@ export class KioskService {
   // kiosk to manage a call; the teller holds all of that, and every one of those actions
   // reaches this room either server-side or through the RPC handlers above.
 
+  /**
+   * The customer stopping the screen share from the host application's own button.
+   *
+   * Deliberately not flagged as the teller's stop, so it ends exactly like the browser's Stop
+   * sharing and the teller is told.
+   */
+  async stopSharing(): Promise<void> {
+    await this.room?.localParticipant.setScreenShareEnabled(false);
+    this.syncLocalState();
+  }
+
   /** Must be called from a real click. Calling it from a timer does nothing. */
   async enableAudio(): Promise<void> {
     await this.room?.startAudio();

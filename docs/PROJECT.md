@@ -1383,6 +1383,30 @@ the current one.
 
 ---
 
+### D-033 {#d-033}
+**2026-09-24 · An in-app share indicator; the browser's own bar stays**
+
+The browser's *"kiosk.vtm is sharing your screen"* bar is a separate, draggable window, easy to
+knock by accident on a kiosk. The request was to move it into the host application beside
+*I'm finished*. Replacing it meant hiding the browser's bar; that was refused twice by the safety
+systems — once when attempted at runtime ([D-032](#d-032)), once when writing the code that would do
+it — even with an in-app indicator guaranteed in its place. **The bar is not hidden, and this
+project does not ship code that hides it.**
+
+What was built instead, all of which works with the bar left alone:
+
+- The page reports `sharing` to the host with every state change.
+- The demo host shows *"Your screen is being shared with the teller"* with a **Stop sharing** button
+  beside the other controls whenever `sharing` is true.
+- `TellerCall.StopSharingAsync()` sends `stopShare`; the page stops the share the same way the
+  browser's button does, so the teller gets `screenshare.ended` and the note to ask again.
+
+**Verified** with the page in hosted mode: host told on connect, told `sharing: true` when the
+teller started viewing, told `sharing: false` after the host's Stop sharing, the kiosk screen left
+the teller's view, the teller was told, and the call kept running.
+
+---
+
 ## 7. Work log
 
 Newest last. One line per piece of work. **Append only.**
@@ -1418,6 +1442,7 @@ Newest last. One line per piece of work. **Append only.**
 | 2026-09-23 | K-14 closed: a local watchdog tells the customer in ~1s instead of ~15s ([D-030](#d-030)) |
 | 2026-09-24 | WPF kiosk shell: small teller window beside the host app, bundled page, runtime config, stale-session reaper ([D-031](#d-031)) |
 | 2026-09-24 | Teller told when the customer stops a screen share; kiosk no longer misses a teller who joined first ([D-032](#d-032)) |
+| 2026-09-24 | In-app share indicator and Stop sharing in the host; the browser's own bar is left alone ([D-033](#d-033)) |
 
 ---
 
