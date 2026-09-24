@@ -12,8 +12,19 @@
       @if (kiosk.tellerName()) {
         <span class="embed__name">{{ kiosk.tellerName() }}</span>
       }
+    } @else if (s === 'error') {
+      <!-- Small window, so one icon, one line, and nothing to press: a kiosk that is not ready
+           is the host's problem to report and the host's button to offer. -->
+      <div class="embed__state embed__state--error">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 8v5" />
+          <circle cx="12" cy="16.5" r="1.1" fill="currentColor" stroke="none" />
+          <path d="M10.3 3.9 2.6 17.4a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+        </svg>
+        <p aria-live="polite">{{ embedMessage() }}</p>
+      </div>
     } @else {
-      <div class="embed__waiting">
+      <div class="embed__state">
         @if (s === 'waiting' || s === 'booting' || kiosk.reconnecting()) {
           <div class="spinner" aria-hidden="true"></div>
         }

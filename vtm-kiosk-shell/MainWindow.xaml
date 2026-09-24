@@ -52,6 +52,12 @@
                         Background="#e5484d" Foreground="White"
                         BorderThickness="0" Cursor="Hand" />
 
+                <Button x:Name="RetryButton" Content="Try again"
+                        Click="OnRetryClick" Visibility="Collapsed"
+                        Padding="26,14" FontSize="16"
+                        Background="#23282f" Foreground="#f2f4f7"
+                        BorderThickness="0" Cursor="Hand" />
+
                 <Button x:Name="AudioButton" Content="Tap to hear the teller"
                         Click="OnAudioClick" Visibility="Collapsed"
                         Margin="12,0,0,0" Padding="26,14" FontSize="16"

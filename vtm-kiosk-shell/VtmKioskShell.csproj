@@ -54,6 +54,28 @@
            Text="The kiosk page built but produced no index.html in $(KioskPageDist)." />
   </Target>
 
+  <!--
+    On an ordinary build, copy whatever the last Angular build produced into bin/webroot so the
+    folder is runnable. No ng build here: that belongs to publish, and a developer pressing F5
+    should not wait for one. A stale copy is worse than none, so this says which it used.
+  -->
+  <Target Name="StageKioskPage" AfterTargets="Build">
+    <Warning Condition="!Exists('$(KioskPageDist)/index.html')"
+             Text="No kiosk page at $(KioskPageDist) - bin/webroot will be empty. Run `npm run build` in vtm-kiosk, or use `dotnet publish`, which builds it for you." />
+
+    <ItemGroup>
+      <StagedPageFiles Include="$(KioskPageDist)/**/*" Exclude="$(KioskPageDist)/kiosk.secret" />
+    </ItemGroup>
+
+    <Copy Condition="Exists('$(KioskPageDist)/index.html')"
+          SourceFiles="@(StagedPageFiles)"
+          DestinationFiles="@(StagedPageFiles->'$(OutDir)webroot/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+
+    <Message Condition="Exists('$(KioskPageDist)/index.html')" Importance="high"
+             Text="Staged the kiosk page into $(OutDir)webroot (from the last Angular build)" />
+  </Target>
+
   <Target Name="CopyKioskPage" AfterTargets="Publish"
           Condition="'$(BuildKioskPage)' == 'true'">
 

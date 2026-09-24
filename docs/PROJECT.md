@@ -1,7 +1,7 @@
 # VTM — Project State & Decision Log
 
 **Single source of truth for where this project is and how it got here.**
-Last snapshot update: **2026-09-23**
+Last snapshot update: **2026-09-24**
 
 ---
 
@@ -1290,6 +1290,60 @@ call, never falls to the idle screen, and the teller can still drive it afterwar
 
 ---
 
+### D-031 {#d-031}
+**2026-09-24 · The kiosk shell: a small teller window beside the bank's own application**
+
+Built on `feature/wpf-kiosk-shell`. Design and reasoning are in [docs/07](07-kiosk-shell.md) and
+`vtm-kiosk-shell/README.md`; this records what was decided and what testing turned up.
+
+**The shape changed once, on request.** The first shell was a full-screen WebView hosting the kiosk
+page. The real kiosk screen is small and already runs the bank's WPF application, so the teller now
+appears in a **small window beside that application**, and every control — talk to a teller, I'm
+finished, try again — stays in the host's own UI. The page detects `window.chrome.webview`, drops
+its own chrome, and becomes a video surface. Three files are meant to be copied into the real
+application: `TellerCall.cs`, `TellerCallWindow.cs`, `ShellConfig.cs`.
+
+**Decisions:**
+
+- **The page is bundled into the shell**, served by `SetVirtualHostNameToFolderMapping` under
+  `https://kiosk.vtm`, so a kiosk needs no web server for its page. `file://` was not an option: its
+  opaque origin sends `Origin: null` to the API, which no CORS setting can allow.
+- **Settings are resolved at runtime**, injected by the shell before the page runs, so one Angular
+  build serves every kiosk. Proved by giving one bundle `kioskId: K-02` — the teller saw
+  *K-02 / Kandy City Lobby 2* while the bundle's default was still K-01.
+- **Host and page talk over WebView2's own channel**: `start`, `end`, `retry`, `enableAudio` in; one
+  state message per change out.
+- **`dotnet build` stages the last Angular build into `bin/webroot`; `dotnet publish` runs the
+  Angular build itself.**
+
+**Found by testing, each invisible from reading:**
+
+| | |
+|---|---|
+| `Policies(Kiosk, Staff)` means **both**, so rejoin refused every kiosk with 403 | new `SessionParticipant` policy |
+| A session ended before acceptance is `Abandoned`, not `Ended`; rejoin let a kiosk into a dead session | rejoinable is an allow-list |
+| Angular copies `public/` into `dist/`, so `kiosk.secret` was being bundled into every install | excluded from the bundle |
+| `PublishDir` lacks a trailing separator sometimes; one copy landed in `publishwebroot/` with a live secret | `EnsureTrailingSlash` |
+| WPF ignores `Opacity` without `AllowsTransparency`, so the "hidden" call window showed | parked off-screen instead |
+| A stale bundle in `bin/` ran the old standalone page and ignored every host command | removed; `check.ps1` now detects it |
+| **The queue kept sessions whose room was gone, and no endpoint could clear them** — both delete and status 404 once LiveKit forgets the room | `StaleSessionReaper`; first sweep retired sessions up to 51 hours old |
+
+**The green "video" the teller saw was a test pattern, not a camera fault.** `fakeMedia: true`
+replaces the camera with Chrome's generated pattern; it was on for automated runs and left on. The
+shell now labels the call window *TEST VIDEO* and the host's title bar when it is on, and
+`check.ps1 -Full` puts the real camera back when it finishes. With it off the kiosk sees
+*HP True Vision HD Camera*.
+
+**`check.ps1`** builds and checks everything in order — tools, services, whether both sides use the
+same LiveKit, build, staged page, enrolment — and names the failing step.
+
+**Still open:** the scripted end-to-end call through the shell (`check.ps1 -Full`) does not complete
+on this machine — teller joins, kiosk stays waiting, and the API reports zero participants. The
+manual test from a phone did carry video both ways, so the call path works; the scripted failure is
+not yet explained. Free memory was under 1 GB during every failing run.
+
+---
+
 ## 7. Work log
 
 Newest last. One line per piece of work. **Append only.**
@@ -1323,6 +1377,7 @@ Newest last. One line per piece of work. **Append only.**
 | 2026-09-22 | Kiosk reduced to one button; the teller drives everything. Screen share proved to work unattended with the kiosk-mode flag ([D-028](#d-028)) |
 | 2026-09-23 | Shared command channel, typed contract, state resync and rejoin. The data channel is not pub/sub, and `server-leave` does not recover by itself ([D-029](#d-029)) |
 | 2026-09-23 | K-14 closed: a local watchdog tells the customer in ~1s instead of ~15s ([D-030](#d-030)) |
+| 2026-09-24 | WPF kiosk shell: small teller window beside the host app, bundled page, runtime config, stale-session reaper ([D-031](#d-031)) |
 
 ---
 

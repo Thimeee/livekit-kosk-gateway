@@ -25,6 +25,7 @@ internal sealed class TellerCallWindow : Window
     private readonly WebView2 _web = new();
     private readonly TextBlock _splash = new();
     private TaskCompletionSource? _ready;
+    private bool _visible;
 
     internal TellerCallWindow(ShellConfig config)
     {
@@ -69,37 +70,67 @@ internal sealed class TellerCallWindow : Window
         Owner = owner;
         _ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        PositionAgainst(owner);
-
         // Follow the host if it moves, so the call does not end up somewhere unrelated.
-        owner.LocationChanged += (_, _) => PositionAgainst(owner);
-        owner.SizeChanged += (_, _) => PositionAgainst(owner);
+        owner.LocationChanged += (_, _) => Place();
+        owner.SizeChanged += (_, _) => Place();
 
-        // Shown either way: WebView2 does not load a page in a window that was never shown,
-        // and a zero-opacity window is the simplest way to have it load quietly.
-        Opacity = visible ? 1 : 0;
+        // WebView2 will not load a page in a window that was never shown, so it is always
+        // shown - parked off-screen when it should not be seen. Opacity would not do: a WPF
+        // window ignores it unless AllowsTransparency is on, and that costs hardware
+        // acceleration on a video surface.
+        _visible = visible;
         ShowActivated = false;
         Show();
+        Place();
 
         await StartWebViewAsync();
         await _ready.Task;
     }
 
+    /// <summary>
+    /// Marks the window when the camera is a test pattern rather than a camera.
+    /// </summary>
+    private void ShowFakeMediaBadge()
+    {
+        var badge = new TextBlock
+        {
+            Text = "TEST VIDEO",
+            Foreground = new SolidColorBrush(Colors.White),
+            Background = new SolidColorBrush(Color.FromArgb(0xCC, 0xe5, 0x48, 0x4d)),
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            Padding = new Thickness(6, 2, 6, 2),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(6),
+        };
+
+        ((Grid)Content).Children.Add(badge);
+    }
+
     /// <summary>Makes a prepared window visible.</summary>
-    internal void Reveal() => Dispatcher.Invoke(() => Opacity = 1);
+    internal void Reveal() => Dispatcher.Invoke(() => { _visible = true; Place(); });
 
     /// <summary>Hides it again without unloading the page.</summary>
-    internal void Conceal() => Dispatcher.Invoke(() => Opacity = 0);
+    internal void Conceal() => Dispatcher.Invoke(() => { _visible = false; Place(); });
 
-    /// <summary>Puts the window in the host's corner, inside it, with a small margin.</summary>
-    private void PositionAgainst(Window owner)
+    /// <summary>Puts the window in the host's corner, or off-screen while it is not wanted.</summary>
+    private void Place()
     {
-        if (owner.WindowState == WindowState.Minimized) return;
+        if (!_visible)
+        {
+            // Far enough out that no arrangement of monitors brings it back.
+            Left = -32000;
+            Top = -32000;
+            return;
+        }
+
+        if (Owner is null || Owner.WindowState == WindowState.Minimized) return;
 
         const double margin = 16;
 
-        Left = owner.Left + owner.ActualWidth - Width - margin;
-        Top = owner.Top + margin;
+        Left = Owner.Left + Owner.ActualWidth - Width - margin;
+        Top = Owner.Top + margin;
     }
 
     private async Task StartWebViewAsync()
@@ -150,6 +181,10 @@ internal sealed class TellerCallWindow : Window
 
             _ready?.TrySetResult();
         };
+
+        // A test pattern instead of a customer looks exactly like a broken camera, and someone
+        // will spend an afternoon on it. Say so on the window itself.
+        if (_config.FakeMedia) ShowFakeMediaBadge();
 
         core.NewWindowRequested += (_, args) => args.Handled = true;
 

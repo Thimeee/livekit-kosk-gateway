@@ -92,6 +92,16 @@ public sealed class TellerCall : IAsyncDisposable
     }
 
     /// <summary>
+    /// Tries again after a failure, without restarting your application.
+    /// </summary>
+    /// <remarks>
+    /// Offer this when <see cref="CallState.Screen"/> is <c>error</c> - typically a kiosk that
+    /// has not been enrolled, or an API that was not up when the machine started.
+    /// </remarks>
+    public Task RetryAsync() =>
+        _window?.SendAsync(new { type = "retry" }) ?? Task.CompletedTask;
+
+    /// <summary>
     /// Lets audio play. Browsers refuse until a gesture, and a gesture on your button counts —
     /// call this from the click handler, not from a timer.
     /// </summary>

@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Media;
 
 namespace VtmKioskShell;
 
@@ -22,11 +23,21 @@ namespace VtmKioskShell;
 /// </remarks>
 public partial class MainWindow : Window
 {
-    private readonly TellerCall _call = new(ShellConfig.Load());
+    private readonly ShellConfig _config = ShellConfig.Load();
+    private readonly TellerCall _call;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        _call = new TellerCall(_config);
+
+        // Worth saying out loud: with a test pattern the teller sees green shapes rather than
+        // the customer, which is indistinguishable from a camera fault.
+        if (_config.FakeMedia)
+        {
+            Title += "  —  TEST VIDEO (fakeMedia is on)";
+        }
 
         // The page reports from a background thread, so everything here goes back to the UI one.
         _call.StateChanged += (_, state) => Dispatcher.Invoke(() => Render(state));
@@ -68,6 +79,13 @@ public partial class MainWindow : Window
         FinishButton.IsEnabled = true;
     }
 
+    private async void OnRetryClick(object sender, RoutedEventArgs e)
+    {
+        RetryButton.IsEnabled = false;
+        await _call.RetryAsync();
+        RetryButton.IsEnabled = true;
+    }
+
     // Browsers refuse to play audio until a gesture. A click on this button is one, and
     // forwarding it is enough.
     private async void OnAudioClick(object sender, RoutedEventArgs e) =>
@@ -78,11 +96,21 @@ public partial class MainWindow : Window
         Status.Text = state.Describe();
 
         var busy = state.Screen is "waiting" or "incall";
+        var broken = state.Screen == "error";
 
-        TalkButton.Visibility = busy ? Visibility.Collapsed : Visibility.Visible;
+        // A kiosk that is not ready must not offer a call it cannot make.
+        TalkButton.Visibility = busy || broken ? Visibility.Collapsed : Visibility.Visible;
         TalkButton.IsEnabled = state.Screen == "idle";
 
         FinishButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+
+        // The button for a failed kiosk belongs here, beside the rest of the buttons, not in
+        // the small window the customer is not being asked to operate.
+        RetryButton.Visibility = broken ? Visibility.Visible : Visibility.Collapsed;
+
+        Status.Foreground = broken
+            ? new SolidColorBrush(Color.FromRgb(0xe5, 0x48, 0x4d))
+            : new SolidColorBrush(Color.FromRgb(0x9a, 0xa3, 0xae));
 
         AudioButton.Visibility = state.NeedsAudioGesture ? Visibility.Visible : Visibility.Collapsed;
     }

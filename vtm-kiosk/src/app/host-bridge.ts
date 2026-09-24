@@ -17,6 +17,7 @@ import { KioskService } from './kiosk.service';
 type HostCommand =
   | { type: 'start' }
   | { type: 'end' }
+  | { type: 'retry' }
   | { type: 'enableAudio' };
 
 /** What the host is told. One message per change, never a stream. */
@@ -73,6 +74,12 @@ export class HostBridge {
 
       case 'end':
         await this.kiosk.endSession();
+        break;
+
+      case 'retry':
+        // A kiosk that failed to enrol, or an API that was down when it started. The button
+        // for this lives in the host's UI; here it is just the command behind it.
+        await this.kiosk.boot();
         break;
 
       case 'enableAudio':

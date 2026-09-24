@@ -6,6 +6,7 @@ using LivekitServerAPI.Infrastructure.Auth;
 using LivekitServerAPI.Infrastructure.Errors;
 using LivekitServerAPI.Infrastructure.LiveKit;
 using LivekitServerAPI.Infrastructure.Persistence;
+using LivekitServerAPI.Infrastructure.Sessions;
 using LivekitServerAPI.Infrastructure.Realtime;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -62,6 +63,11 @@ try
         }));
 
     builder.Services.AddScoped<ISessionStore, SessionStore>();
+
+    // Keeps the database honest about sessions whose room has gone. Without it a teller's queue
+    // fills with customers who left hours ago, and nothing can clear them - both the delete and
+    // the status endpoints look the room up first and answer 404 once it is missing.
+    builder.Services.AddHostedService<StaleSessionReaper>();
 
     // ── Authentication ──────────────────────────────────────────────────
     // The only place the choice of identity source is visible. See docs/PROJECT.md D-021.

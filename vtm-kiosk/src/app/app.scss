@@ -225,7 +225,7 @@
 
 .embed vtm-video-tile { position: absolute; inset: 0; }
 
-.embed__waiting {
+.embed__state {
   position: absolute;
   inset: 0;
   display: grid;
@@ -260,3 +260,19 @@
   color: #fff;
   font-size: 0.9375rem;
 }
+
+/* A kiosk that is not ready says so plainly and offers nothing to press - the host owns
+   the button, and a second one here would be a second place to look. */
+.embed__state--error { color: var(--danger); }
+
+.embed__state--error svg {
+  width: 2rem;
+  height: 2rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.embed__state p { margin: 0; max-width: 18rem; }
