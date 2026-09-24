@@ -130,7 +130,7 @@ building.
 | API — config validation | 🟢 **Working** | `LiveKitOptions` validated on start |
 | API — health check | 🟢 **Working** | `GET /health`, real LiveKit probe, 503 when down |
 | API — error handling | 🟢 **Working** | `Twirp.ErrorCode` → HTTP status |
-| API — session lifecycle | 🟢 **Working** | create / list / get / status / end, persisted to SQL Server ([D-020](#d-020)) |
+| API — session lifecycle | 🟢 **Working** | create / list / get / status / end / current / rejoin, persisted to SQL Server ([D-020](#d-020)). Either side can drop and come back to the same call within two minutes ([D-034](#d-034)) |
 | API — authentication | 🟢 **Working** | JWT + policies on every endpoint; Local mode live, Oidc mode wired ([D-021](#d-021)) |
 | API — queue & ring | 🟢 **Working** | `/api/queue`, accept with race handling, SignalR hub per branch ([D-022](#d-022)) |
 | API — participant control | 🟢 **Working** | mute/unmute, remove, permissions, notify, transfer, monitor ([D-018](#d-018)); swept end to end in [D-019](#d-019) |
@@ -1405,6 +1405,73 @@ What was built instead, all of which works with the bar left alone:
 teller started viewing, told `sharing: false` after the host's Stop sharing, the kiosk screen left
 the teller's view, the teller was told, and the call kept running.
 
+### D-034 {#d-034}
+**2026-09-24 · A dropped side comes back to the same call; two minutes before anyone gives up**
+
+The rule agreed: if the customer or the teller drops out of a call — network, crash, a reload, a
+restart — the other stays in it, and the one who dropped comes back to **the same call**, not a new
+session. Only if they do not come back does the call end. Every window is **two minutes**:
+
+| Who dropped | What the other sees | After two minutes |
+|---|---|---|
+| The customer | Teller: *"The customer was disconnected. Waiting for them to reconnect — the session ends in m:ss."* The teller can still End session early. | The teller's console ends the session. |
+| The teller | Kiosk: *"The teller was disconnected. Please wait while they reconnect."* **No way out** — the customer has no leave button inside a call. | A **Leave** button appears. |
+| Both | Nobody is left to see anything. | LiveKit closes the room (`DepartureTimeout`, was 20 s, now 2 min); the stale-session reaper ([D-031](#d-031)) then retires the session. |
+
+**Coming back after a restart.** A reload or restart loses everything in memory, including which
+room the caller was in. New `GET /api/sessions/current` answers that from the database: a kiosk gets
+its Waiting or Active session, a teller the Active session they accepted. The kiosk asks on boot and
+the teller console on sign-in, then `POST /api/sessions/{room}/rejoin` for a fresh token into the
+same room. Both return **404 if the LiveKit room is gone**, whatever the database says. LiveKit
+creates rooms on join, so handing out a dead room's name would put the caller alone in an empty
+room of the same name.
+
+**Three bugs found on the way:**
+
+- The teller console **ended the session the moment the customer's participant disconnected**, so a
+  kiosk that restarted had nothing to come back to. It now waits out the two minutes.
+- `DELETE /api/sessions/{room}` was **Staff only**. The kiosk called it on Cancel and on Leave, got a
+  403, and swallowed it. So a customer who cancelled while waiting **stayed in every teller's queue**
+  until the room timed out. With resume-on-boot, a kiosk restarting after its customer had left
+  would also have rejoined the call they walked away from. The endpoint now takes any session
+  participant; a kiosk may end **only its own** session (403 otherwise), recorded as
+  `CustomerLeft`.
+- `ParticipantConnected` fires only for participants who arrive after you, so a kiosk rejoining a
+  room the teller was already in never cleared its "teller was disconnected" state. It now also
+  checks `room.remoteParticipants` after connecting (the same race as [D-032](#d-032)).
+
+**The shell** gets `TellerAway` and `CanLeave` in `CallState`. The host hides its button while the
+teller is away and shows **Leave** once `CanLeave` is true.
+
+**Not handled:** a customer who walks away while the teller is gone leaves the kiosk showing
+*"You can wait, or leave"* until the teller returns or someone presses Leave. The kiosk is still in
+the room, so LiveKit keeps it open. An idle timeout on that screen would close it. Not built, because
+nobody has asked for it.
+
+**Verified** against the local stack, with pages closed outright rather than disconnected politely:
+kiosk closed → teller banner, still in the call → kiosk restarted → back in the **same** call, still
+one session, banner cleared. Teller closed → kiosk told, no button → teller signed in → back in the
+same call. Teller gone for good → Leave offered at **120 s** → session closed. Cancel while waiting
+→ session closed and gone from the queue. A kiosk ending another room → **403**. Kiosk gone for good
+→ teller's call ended at **121 s**, session closed. 23 checks, all passing.
+
+---
+
+### D-035 {#d-035}
+**2026-09-24 · Native screen capture for the kiosk: proposed, deferred**
+
+After [D-033](#d-033) the browser's sharing bar stays as long as the kiosk's camera, audio and
+screen go through WebView2. The question was whether the LiveKit .NET client could do it instead.
+`Livekit.Rtc.Dotnet` 0.1.4 has no echo cancellation, no device capture and no rendering
+([D-007](#d-007)), so it cannot replace the page for the call. What it *could* do is publish the
+screen alone: a second, native participant in the room that captures the desktop and publishes it
+as a track, with the camera and audio staying in WebView2. That would remove the browser's bar,
+because the browser would no longer be capturing anything.
+
+**Deferred by request.** It is a second participant per kiosk, a Windows capture path to write and
+maintain, and a disclosure to the customer that the host would then own entirely. For the demo the
+browser's bar stays. Revisit if the bar causes real trouble at a kiosk.
+
 ---
 
 ## 7. Work log
@@ -1443,6 +1510,7 @@ Newest last. One line per piece of work. **Append only.**
 | 2026-09-24 | WPF kiosk shell: small teller window beside the host app, bundled page, runtime config, stale-session reaper ([D-031](#d-031)) |
 | 2026-09-24 | Teller told when the customer stops a screen share; kiosk no longer misses a teller who joined first ([D-032](#d-032)) |
 | 2026-09-24 | In-app share indicator and Stop sharing in the host; the browser's own bar is left alone ([D-033](#d-033)) |
+| 2026-09-24 | Drop and come back to the same call: two-minute windows, `GET /api/sessions/current`, kiosks may end their own session ([D-034](#d-034)); native screen capture deferred ([D-035](#d-035)) |
 
 ---
 

@@ -19,6 +19,7 @@ type HostCommand =
   | { type: 'end' }
   | { type: 'retry' }
   | { type: 'stopShare' }
+  | { type: 'requestExit' }
   | { type: 'enableAudio' };
 
 /** What the host is told. One message per change, never a stream. */
@@ -38,6 +39,12 @@ export interface HostState {
    * "is sharing your screen" bar must show its own indicator whenever this is true.
    */
   sharing: boolean;
+  /** The teller dropped out of this call and has not come back yet. */
+  tellerAway: boolean;
+  /** Offer the customer a way out. False inside a call; true only after the teller-away grace. */
+  canLeave: boolean;
+  /** The customer has asked to finish and the teller has been told. */
+  exitRequested: boolean;
 }
 
 interface WebView2Bridge {
@@ -88,6 +95,11 @@ export class HostBridge {
         await this.kiosk.boot();
         break;
 
+      case 'requestExit':
+        // Inside a call the customer asks; the teller ends it.
+        await this.kiosk.requestExit();
+        break;
+
       case 'stopShare':
         // The customer's own stop, from the host's button. It goes the same way as the
         // browser's Stop sharing, so the teller is told.
@@ -123,6 +135,9 @@ export class HostBridge {
       reconnecting: this.kiosk.reconnecting(),
       needsAudioGesture: this.kiosk.needsAudioGesture(),
       sharing: this.kiosk.sharing(),
+      tellerAway: this.kiosk.tellerAway(),
+      canLeave: this.kiosk.canLeave(),
+      exitRequested: this.kiosk.exitRequested(),
     };
 
     this.bridge?.postMessage(JSON.stringify(state));

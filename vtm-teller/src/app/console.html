@@ -102,6 +102,14 @@
       <vtm-audio-sink [track]="teller.remoteAudio()" />
 
       <aside class="call__side">
+        @if (customerAwayRemaining(); as left) {
+          <!-- The customer dropped out. The call stays open for them to come back; ending it
+               early is still the teller's choice. -->
+          <muk-alert variant="warning" [dismissible]="false">
+            The customer was disconnected. Waiting for them to reconnect — the session ends in {{ left }}.
+          </muk-alert>
+        }
+
         @if (teller.shareStoppedByCustomer() && !teller.kioskSharing()) {
           <muk-alert variant="info" [dismissible]="false">
             The customer stopped sharing their screen. You can ask again.

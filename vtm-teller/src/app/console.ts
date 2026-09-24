@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import {
@@ -39,6 +46,23 @@ export class Console {
   protected readonly teller = inject(TellerService);
   private readonly dialog = inject(DialogService);
   private readonly router = inject(Router);
+
+  /** A one-second clock, for countdowns. */
+  private readonly clock = signal(Date.now());
+
+  constructor() {
+    const tick = setInterval(() => this.clock.set(Date.now()), 1000);
+    inject(DestroyRef).onDestroy(() => clearInterval(tick));
+  }
+
+  /** "1:42" until a dropped customer's call is ended, or undefined while they are here. */
+  protected readonly customerAwayRemaining = computed(() => {
+    const until = this.teller.customerAwayUntil();
+    if (until === undefined) return undefined;
+
+    const left = Math.max(0, Math.ceil((until - this.clock()) / 1000));
+    return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+  });
 
   protected readonly initial = computed(() =>
     (this.teller.customerName().replace(/^kiosk-/, '').trim()[0] ?? '?').toUpperCase(),

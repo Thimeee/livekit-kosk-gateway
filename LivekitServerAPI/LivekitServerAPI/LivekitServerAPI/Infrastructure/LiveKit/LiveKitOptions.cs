@@ -47,5 +47,12 @@ public sealed class LiveKitOptions
     public TimeSpan SessionEmptyTimeout { get; set; } = TimeSpan.FromMinutes(5);
 
     /// <summary>How long the room lingers after the last participant leaves.</summary>
-    public TimeSpan SessionDepartureTimeout { get; set; } = TimeSpan.FromSeconds(20);
+    /// <remarks>
+    /// This is the window in which a customer and teller who have <b>both</b> dropped out can
+    /// still come back to the same call. Once it passes LiveKit deletes the room, the stale
+    /// session sweep retires the session, and a rejoin gets 404. It was 20 seconds, which a
+    /// kiosk restarting after a power blip cannot meet; two minutes is the agreed window
+    /// (PROJECT.md D-034).
+    /// </remarks>
+    public TimeSpan SessionDepartureTimeout { get; set; } = TimeSpan.FromMinutes(2);
 }

@@ -202,6 +202,12 @@ Measured, not assumed ([D-029](PROJECT.md#d-029)):
 Anything published while a side was away was **not** delivered, so a side that comes back calls
 `state.get` rather than assuming what it last saw is still true.
 
+A side that comes back **after a reload or restart** has lost the room name as well. It asks
+`GET /api/sessions/current` and rejoins that room ([D-034](PROJECT.md#d-034)). The other side waits
+two minutes for it: the teller sees a countdown, the customer gets a Leave button only once the
+two minutes are up. Commands sent to a side that is away fail with an RPC error. Nothing queues
+them.
+
 ---
 
 ## 7. Not yet built

@@ -102,6 +102,14 @@ public sealed class TellerCall : IAsyncDisposable
         _window?.SendAsync(new { type = "retry" }) ?? Task.CompletedTask;
 
     /// <summary>
+    /// The customer asking to finish, inside a call. It asks; the teller ends the call. Use
+    /// <see cref="EndAsync"/> only before a teller has taken the call, or once
+    /// <see cref="CallState.CanLeave"/> is true.
+    /// </summary>
+    public Task RequestExitAsync() =>
+        _window?.SendAsync(new { type = "requestExit" }) ?? Task.CompletedTask;
+
+    /// <summary>
     /// The customer stopping the screen share from your own button. The teller is told, exactly
     /// as when the browser's own Stop sharing is used.
     /// </summary>
@@ -164,6 +172,21 @@ public sealed record CallState
     [JsonPropertyName("sharing")]
     public bool Sharing { get; init; }
 
+    /// <summary>The teller dropped out and has not come back yet. The call is still open.</summary>
+    [JsonPropertyName("tellerAway")]
+    public bool TellerAway { get; init; }
+
+    /// <summary>
+    /// Offer a way out. Never inside a call; only once the teller has been gone for the grace
+    /// period. Before that the customer waits.
+    /// </summary>
+    [JsonPropertyName("canLeave")]
+    public bool CanLeave { get; init; }
+
+    /// <summary>The customer asked to finish and the teller has been told.</summary>
+    [JsonPropertyName("exitRequested")]
+    public bool ExitRequested { get; init; }
+
     public bool InCall => Screen == "incall";
 
     /// <summary>One line fit to put on your own screen.</summary>
@@ -173,6 +196,7 @@ public sealed record CallState
         "booting" => "Starting…",
         "idle" => "Ready",
         "waiting" => string.IsNullOrWhiteSpace(Status) ? "Waiting for a teller…" : Status,
+        "incall" when ExitRequested => "The teller has been told you are finished",
         "incall" => string.IsNullOrWhiteSpace(TellerName) ? "Connected" : $"Speaking to {TellerName}",
         "error" => string.IsNullOrWhiteSpace(Error) ? "This kiosk is not ready" : Error,
         _ => string.Empty,

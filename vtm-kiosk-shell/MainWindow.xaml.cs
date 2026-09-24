@@ -72,10 +72,19 @@ public partial class MainWindow : Window
         await _call.StartAsync(this);
     }
 
+    /// <summary>
+    /// One button, three meanings, decided by where the customer is:
+    /// before a teller takes the call it cancels; inside the call it only asks the teller;
+    /// after the teller has been gone for the grace period it leaves.
+    /// </summary>
     private async void OnFinishClick(object sender, RoutedEventArgs e)
     {
         FinishButton.IsEnabled = false;
-        await _call.EndAsync();
+
+        var state = _call.State;
+        if (state.InCall) await _call.RequestExitAsync();
+        else await _call.EndAsync();
+
         FinishButton.IsEnabled = true;
     }
 
@@ -105,7 +114,22 @@ public partial class MainWindow : Window
         TalkButton.Visibility = busy || broken ? Visibility.Collapsed : Visibility.Visible;
         TalkButton.IsEnabled = state.Screen == "idle";
 
-        FinishButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        // Inside a call there is no way out, only a request. After the teller has been gone for
+        // the grace period the customer may leave. Before any teller took the call, cancelling
+        // is just walking away from the queue.
+        var (label, show) = state switch
+        {
+            { InCall: true, ExitRequested: true } => ("The teller has been told", true),
+            { InCall: true } => ("I'm finished", true),
+            { TellerAway: true, CanLeave: true } => ("Leave", true),
+            { TellerAway: true } => ("", false),
+            { Screen: "waiting" } => ("Cancel", true),
+            _ => ("", false),
+        };
+
+        FinishButton.Content = label;
+        FinishButton.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        FinishButton.IsEnabled = !(state.InCall && state.ExitRequested);
 
         // The button for a failed kiosk belongs here, beside the rest of the buttons, not in
         // the small window the customer is not being asked to operate.

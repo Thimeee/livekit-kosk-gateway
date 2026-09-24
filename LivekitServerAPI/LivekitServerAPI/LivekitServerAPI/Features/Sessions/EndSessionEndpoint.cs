@@ -2,6 +2,7 @@ using FastEndpoints;
 using LivekitServerAPI.Contracts;
 using LivekitServerAPI.Domain.Auth;
 using LivekitServerAPI.Domain.Sessions;
+using LivekitServerAPI.Infrastructure.Auth;
 using LivekitServerAPI.Infrastructure.LiveKit;
 using LivekitServerAPI.Infrastructure.Persistence;
 using LivekitServerAPI.Infrastructure.Realtime;
@@ -27,11 +28,29 @@ public class EndSessionEndpoint : Endpoint<EndSessionRequest, ApiResponse<EndSes
     public override void Configure()
     {
         Delete("/api/sessions/{roomName}");
-        Policies(VtmPolicies.Staff);
+
+        // Staff end any call they can act on. A kiosk ends only its own - its customer cancelling
+        // before a teller answers, or leaving after the teller dropped out for the grace period.
+        // This was Staff only, so a kiosk's cancel got a 403 that the kiosk swallowed: cancelled
+        // customers stayed in the queue for minutes, and a kiosk restarting after the customer
+        // had left would have resumed the call they walked away from.
+        Policies(VtmPolicies.SessionParticipant);
     }
 
     public override async Task HandleAsync(EndSessionRequest req, CancellationToken ct)
     {
+        var isKiosk = User.Role() == VtmRoles.Kiosk;
+
+        if (isKiosk)
+        {
+            var own = await _store.FindByRoomAsync(req.RoomName, ct);
+            if (own is null || own.KioskId != User.SubjectId())
+            {
+                await Send.ForbiddenAsync(ct);
+                return;
+            }
+        }
+
         var room = await _rooms.GetRoomAsync(req.RoomName, ct);
         if (room is null)
         {
@@ -48,7 +67,8 @@ public class EndSessionEndpoint : Endpoint<EndSessionRequest, ApiResponse<EndSes
         var endedAt = DateTimeOffset.UtcNow;
         var persisted = await _store.FindByRoomAsync(req.RoomName, ct);
         var status = persisted?.AcceptedAt is null ? SessionStatus.Abandoned : SessionStatus.Ended;
-        var reason = status == SessionStatus.Abandoned
+        // Who ended it is known from the caller, so record it rather than guess from the status.
+        var reason = status == SessionStatus.Abandoned || isKiosk
             ? SessionEndReason.CustomerLeft
             : SessionEndReason.TellerEnded;
 

@@ -13,6 +13,12 @@ import { LinkWatchdog } from '@vtm/shared/link-watchdog';
 import type { KioskState } from '@vtm/shared/vtm-commands';
 import { deviceSecret, kioskConfig, loadKioskConfig } from './kiosk.config';
 
+/**
+ * How long a customer whose teller dropped out waits before being offered a way to leave.
+ * Agreed at two minutes - PROJECT.md D-034.
+ */
+const TELLER_GRACE_MS = 2 * 60_000;
+
 export type KioskScreen = 'booting' | 'idle' | 'waiting' | 'incall' | 'error';
 
 interface ApiEnvelope<T> {
@@ -85,6 +91,14 @@ export class KioskService {
   /** True while reconnecting after being dropped, so the screen can say so. */
   readonly reconnecting = signal(false);
 
+  /**
+   * The teller dropped out of a call that is still open. The customer waits for them to come back
+   * and has no way out for TELLER_GRACE_MS - after that `canLeave` offers one.
+   */
+  readonly tellerAway = signal(false);
+  readonly canLeave = signal(false);
+  private tellerAwayTimer?: ReturnType<typeof setTimeout>;
+
   /** Read from the settings at boot; see KioskConfig for why it is off by default. */
   readonly showScreenShareIndicator = signal(false);
 
@@ -121,6 +135,32 @@ export class KioskService {
       this.statusText.set('');
     } catch (e) {
       this.fail(this.describe(e));
+      return;
+    }
+
+    // A restart - power, crash, an update - loses the call held in memory. Pressing Start again
+    // would open a second session while the customer's first one, and perhaps their teller, are
+    // still waiting. So look first.
+    await this.resumeOpenSession();
+  }
+
+  private async resumeOpenSession(): Promise<void> {
+    try {
+      const open = await this.get<{ roomName: string; status: string }>('/api/sessions/current');
+      if (!open?.roomName) return;
+
+      this.screen.set('waiting');
+      this.statusText.set('Reconnecting you to your call…');
+
+      const res = await this.post<{ token: string }>(
+        `/api/sessions/${open.roomName}/rejoin`, {}, this.apiToken);
+
+      await this.join(res.token, open.roomName);
+      if (this.screen() === 'waiting') this.statusText.set('Waiting for a teller…');
+    } catch {
+      // 404 is the ordinary answer - no open call. Anything else leaves the kiosk idle, which is
+      // where it would have been without this.
+      if (this.screen() === 'waiting') this.reset();
     }
   }
 
@@ -178,13 +218,7 @@ export class KioskService {
         else this.remoteAudio.set(undefined);
       })
       .on(RoomEvent.ParticipantConnected, (p) => this.onTellerPresent(p))
-      .on(RoomEvent.ParticipantDisconnected, () => {
-        this.tellerName.set('');
-        this.remoteVideo.set(undefined);
-        // The teller dropping out is not the end of the session - they may be transferring it.
-        this.screen.set('waiting');
-        this.statusText.set('The teller has left. Reconnecting you…');
-      })
+      .on(RoomEvent.ParticipantDisconnected, () => this.onTellerAway())
       .on(RoomEvent.LocalTrackPublished, (pub) => {
         if (pub.kind === Track.Kind.Video && pub.source === Track.Source.Camera) {
           this.localVideo.set(pub);
@@ -278,11 +312,35 @@ export class KioskService {
    * to them is the worse failure.
    */
   private onTellerPresent(p: RemoteParticipant): void {
+    clearTimeout(this.tellerAwayTimer);
+    this.tellerAway.set(false);
+    this.canLeave.set(false);
+
     this.tellerName.set(p.name || p.identity);
     this.screen.set('incall');
     this.statusText.set('');
     // They may be rejoining and know nothing of what happened while they were away.
     this.announce();
+  }
+
+  /**
+   * The teller dropped out. The call stays open for them to come back to; the customer has no way
+   * out of it for TELLER_GRACE_MS, and after that is offered one.
+   */
+  private onTellerAway(): void {
+    this.tellerName.set('');
+    this.remoteVideo.set(undefined);
+    this.screen.set('waiting');
+    this.statusText.set('The teller was disconnected. Please wait while they reconnect.');
+    this.tellerAway.set(true);
+    this.canLeave.set(false);
+
+    clearTimeout(this.tellerAwayTimer);
+    this.tellerAwayTimer = setTimeout(() => {
+      if (!this.tellerAway()) return;
+      this.canLeave.set(true);
+      this.statusText.set('The teller has not come back yet. You can wait, or leave.');
+    }, TELLER_GRACE_MS);
   }
 
   /** Reads our own publications back, rather than assuming a call did what it was asked. */
@@ -455,6 +513,9 @@ export class KioskService {
   }
 
   private reset(): void {
+    clearTimeout(this.tellerAwayTimer);
+    this.tellerAway.set(false);
+    this.canLeave.set(false);
     this.watchdog.stop();
     clearTimeout(this.rejoinTimer);
     this.rejoinAttempt = 0;
@@ -483,6 +544,14 @@ export class KioskService {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(body),
+    });
+
+    return this.unwrap<T>(res);
+  }
+
+  private async get<T>(path: string): Promise<T> {
+    const res = await fetch(kioskConfig().apiBaseUrl + path, {
+      headers: { Authorization: `Bearer ${this.apiToken}` },
     });
 
     return this.unwrap<T>(res);

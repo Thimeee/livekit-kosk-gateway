@@ -230,6 +230,8 @@ Accept: application/json
 ### =====================================================================
 
 @session = vtm-session-42
+# A kiosk bearer token, for 6b.12-6b.14: copy it from the kiosk page's requests.
+@kioskToken = paste-a-kiosk-access-token
 
 ### 6b.1  Create a session
 #    Expect 201
@@ -320,6 +322,26 @@ DELETE {{host}}/api/sessions/{{session}}
 #    Expect 404 - LiveKit's DeleteRoom is happy to delete nothing, but this
 #    API checks first so a caller is told the session was already gone.
 DELETE {{host}}/api/sessions/{{session}}
+
+### 6b.12  The caller's own open session  (D-034)
+#    With a kiosk token: 200, data.roomName + status "Waiting" or "Active".
+#    With a teller token: 200 only for a session that teller accepted.
+#    404 when there is none, or when its LiveKit room is already gone -
+#    handing out a dead room name would let LiveKit recreate it empty.
+GET {{host}}/api/sessions/current
+Authorization: Bearer {{kioskToken}}
+
+### 6b.13  Rejoin that session  (D-034)
+#    Expect 200 with a fresh token for the SAME roomName. 404 once the
+#    session is over or its room is gone.
+POST {{host}}/api/sessions/{{session}}/rejoin
+Authorization: Bearer {{kioskToken}}
+
+### 6b.14  A kiosk ending a session that is not its own  (D-034)
+#    Expect 403. A kiosk may end only its own session (cancel while
+#    waiting, or leave after the teller has been gone two minutes).
+DELETE {{host}}/api/sessions/vtm-not-this-kiosks
+Authorization: Bearer {{kioskToken}}
 
 
 ### =====================================================================

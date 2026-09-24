@@ -19,6 +19,12 @@ export const TELLER_CONFIG = {
   liveKitUrl: 'wss://monapisam.nipunmcs.biz',
 } as const;
 
+/**
+ * How long the teller waits for a customer who dropped out before the call is ended.
+ * Agreed at two minutes - PROJECT.md D-034.
+ */
+const CUSTOMER_GRACE_MS = 2 * 60_000;
+
 export interface QueueEntry {
   sessionId: string;
   roomName: string;
@@ -116,6 +122,13 @@ export class TellerService {
   /** True while getting back into a call we were dropped from. */
   readonly reconnecting = signal(false);
 
+  /**
+   * When the customer dropped out, the moment the call will be ended if they have not come back.
+   * Undefined while they are here. See CUSTOMER_GRACE_MS.
+   */
+  readonly customerAwayUntil = signal<number | undefined>(undefined);
+  private customerAwayTimer?: ReturnType<typeof setTimeout>;
+
   // ── Session ──────────────────────────────────────────────────────────
 
   async signIn(username: string, password: string): Promise<boolean> {
@@ -132,6 +145,10 @@ export class TellerService {
       await this.connectHub();
       await this.refreshQueue();
       this.startTicker();
+
+      // A reload loses the call along with everything else in memory, and the session left the
+      // queue when it was accepted - so without this there is no way back to it at all.
+      await this.resumeOpenSession();
 
       return true;
     } catch (e) {
@@ -282,11 +299,11 @@ export class TellerService {
         else if (track.source === Track.Source.ScreenShare) this.remoteScreen.set(undefined);
         else this.remoteVideo.set(undefined);
       })
-      .on(RoomEvent.ParticipantConnected, p => this.customerName.set(p.name || p.identity))
-      .on(RoomEvent.ParticipantDisconnected, () => {
-        this.toast.info('The customer has left.');
-        void this.leaveCall(true);
+      .on(RoomEvent.ParticipantConnected, p => {
+        this.customerName.set(p.name || p.identity);
+        this.onCustomerBack();
       })
+      .on(RoomEvent.ParticipantDisconnected, () => this.onCustomerAway())
       .on(RoomEvent.LocalTrackPublished, pub => {
         if (pub.kind === Track.Kind.Video && pub.source === Track.Source.Camera) {
           this.localVideo.set(pub);
@@ -518,6 +535,55 @@ export class TellerService {
    * queue would leave them talking to nobody while their session is still open, so the teller
    * goes back in. A 404 - the session really has ended - is the one case that stops it.
    */
+  /**
+   * The customer dropped out. Ending the call here used to be immediate, which ended the session
+   * under a kiosk that was about to reconnect - its rejoin then got 404 and it fell back to its
+   * idle screen. Now the teller stays and the customer has CUSTOMER_GRACE_MS to come back to the
+   * same call. The teller can still end it sooner.
+   */
+  private onCustomerAway(): void {
+    if (!this.inCall() || this.customerAwayUntil() !== undefined) return;
+
+    this.customerAwayUntil.set(Date.now() + CUSTOMER_GRACE_MS);
+    this.toast.warning('The customer was disconnected. Waiting for them to come back.');
+
+    clearTimeout(this.customerAwayTimer);
+    this.customerAwayTimer = setTimeout(() => {
+      if (this.customerAwayUntil() === undefined) return;
+      this.toast.info('The customer did not come back. The session has ended.');
+      void this.leaveCall(true);
+    }, CUSTOMER_GRACE_MS);
+  }
+
+  private onCustomerBack(): void {
+    if (this.customerAwayUntil() === undefined) return;
+
+    clearTimeout(this.customerAwayTimer);
+    this.customerAwayUntil.set(undefined);
+    this.toast.success('The customer is back.');
+
+    // They know nothing of what happened while they were away.
+    void this.pullKioskState();
+  }
+
+  /** Rejoins a call this teller was in before a reload or a restart, if it is still open. */
+  private async resumeOpenSession(): Promise<void> {
+    try {
+      const open = await this.get<{ roomName: string; status: string }>('/api/sessions/current');
+      if (!open?.roomName) return;
+
+      const res = await this.post<{ token: string }>(`/api/sessions/${open.roomName}/rejoin`, {});
+      this.currentRoom.set(open.roomName);
+      await this.join(res.token);
+      this.inCall.set(true);
+
+      this.toast.info('You are back in your call.');
+    } catch {
+      // 404 is the ordinary answer: no open call. Anything else leaves the teller on the queue,
+      // which is where they would have been without this.
+    }
+  }
+
   private async rejoin(): Promise<void> {
     const room = this.currentRoom();
 
@@ -578,6 +644,8 @@ export class TellerService {
       }
     }
 
+    clearTimeout(this.customerAwayTimer);
+    this.customerAwayUntil.set(undefined);
     this.inCall.set(false);
     this.exitRequested.set(false);
     this.shareStoppedByCustomer.set(false);

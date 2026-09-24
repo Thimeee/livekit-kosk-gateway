@@ -66,8 +66,23 @@ WebView2's own host/page channel. The page becomes a video surface with no UI of
 
 | Direction | |
 |---|---|
-| Host → page | `{"type":"start"}`, `{"type":"end"}`, `{"type":"enableAudio"}` |
-| Page → host | one state message per change — screen, status, teller name, reconnecting, audio gesture |
+| Host → page | `start`, `end`, `retry`, `stopShare`, `requestExit`, `enableAudio` — each `{"type":"…"}` |
+| Page → host | one state message per change — screen, status, teller name, reconnecting, audio gesture, `sharing`, `tellerAway`, `canLeave`, `exitRequested` |
+
+`TellerCall` wraps both directions: `StartAsync`, `EndAsync`, `RetryAsync`, `StopSharingAsync`,
+`RequestExitAsync`, `EnableAudioAsync`, and a `CallState` raised on every change. What the demo
+host's one button does with it:
+
+| State | Button |
+|---|---|
+| Waiting for a teller | **Cancel** → `EndAsync` |
+| In a call | **I'm finished** → `RequestExitAsync` (the teller is told; the teller ends it) |
+| In a call, exit already asked | *The teller has been told*, disabled |
+| Teller dropped out (`TellerAway`) | hidden — the customer waits for the teller to come back |
+| Teller gone two minutes (`CanLeave`) | **Leave** → `EndAsync` |
+
+If the shell restarts mid-call, the page finds the open session and goes back into the same call
+by itself. See PROJECT.md D-034.
 
 The page notices it is hosted (`window.chrome.webview` exists) and drops its own chrome. The same
 build still runs standalone in a browser with all its screens, which is what the browser demo uses.

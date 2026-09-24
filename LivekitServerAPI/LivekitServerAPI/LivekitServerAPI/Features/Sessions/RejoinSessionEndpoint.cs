@@ -29,11 +29,13 @@ public class RejoinSessionEndpoint
 {
     private readonly VtmDbContext _db;
     private readonly ILiveKitTokenService _tokens;
+    private readonly IRoomService _rooms;
 
-    public RejoinSessionEndpoint(VtmDbContext db, ILiveKitTokenService tokens)
+    public RejoinSessionEndpoint(VtmDbContext db, ILiveKitTokenService tokens, IRoomService rooms)
     {
         _db = db;
         _tokens = tokens;
+        _rooms = rooms;
     }
 
     public override void Configure()
@@ -59,7 +61,11 @@ public class RejoinSessionEndpoint
         // become rejoinable by default.
         var rejoinable = session?.Status is SessionStatus.Waiting or SessionStatus.Active;
 
-        if (session is null || !rejoinable)
+        // The room has to exist as well. After everyone has been gone for the departure timeout
+        // LiveKit deletes it, but the row stays open until the next sweep - and a token for a
+        // missing room makes LiveKit create a fresh, empty one on join. The caller would then sit
+        // alone in a call nobody else can reach.
+        if (session is null || !rejoinable || await _rooms.GetRoomAsync(session.RoomName, ct) is null)
         {
             // Nothing to rejoin. The caller should stop trying and go back to idle.
             await Send.NotFoundAsync(ct);

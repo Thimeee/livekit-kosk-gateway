@@ -74,3 +74,6 @@ public record RejoinSessionRequest
 
 /// <param name="Status">So a client that was away can tell whether a teller has since joined.</param>
 public record RejoinSessionResponse(string RoomName, string Token, string Status);
+
+/// <param name="Status">Waiting or Active. Anything else is not current.</param>
+public record CurrentSessionResponse(string RoomName, string Status);
