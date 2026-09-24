@@ -67,10 +67,15 @@
       <StagedPageFiles Include="$(KioskPageDist)/**/*" Exclude="$(KioskPageDist)/kiosk.secret" />
     </ItemGroup>
 
+    <!-- Clear it first: bundle names are content-hashed, so a copy on top leaves every previous
+         build's main-*.js beside the current one. Harmless to the page, confusing to anything
+         that looks inside. -->
+    <RemoveDir Condition="Exists('$(KioskPageDist)/index.html')" Directories="$(OutDir)webroot" />
+
     <Copy Condition="Exists('$(KioskPageDist)/index.html')"
           SourceFiles="@(StagedPageFiles)"
           DestinationFiles="@(StagedPageFiles->'$(OutDir)webroot/%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
+          />
 
     <Message Condition="Exists('$(KioskPageDist)/index.html')" Importance="high"
              Text="Staged the kiosk page into $(OutDir)webroot (from the last Angular build)" />

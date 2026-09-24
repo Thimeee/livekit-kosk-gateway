@@ -107,6 +107,12 @@ export class TellerService {
   /** Set when the customer presses "I'm finished". Cleared when the session ends. */
   readonly exitRequested = signal(false);
 
+  /**
+   * Set when the customer stopped the screen share themselves. Shown beside the button until the
+   * teller asks again, so it is not a message that was on screen for three seconds and missed.
+   */
+  readonly shareStoppedByCustomer = signal(false);
+
   /** True while getting back into a call we were dropped from. */
   readonly reconnecting = signal(false);
 
@@ -327,6 +333,13 @@ export class TellerService {
       this.toast.warning('The customer has asked to finish.');
     });
 
+    // The customer pressed the browser's "Stop sharing". That is theirs to press - the bar is
+    // how they know their screen is being watched - so the teller is told and can ask again.
+    this.channel.handle('screenshare.ended', async () => {
+      this.shareStoppedByCustomer.set(true);
+      this.toast.warning('The customer stopped sharing their screen.');
+    });
+
     // A hint that something changed on the kiosk. Only a hint: nothing is retained on the data
     // channel, so this console never treats a broadcast as the source of truth.
     this.channel.on(TOPICS.kioskState, (data) => this.applyKioskState(data as KioskState));
@@ -448,6 +461,7 @@ export class TellerService {
     if (!c) return;
 
     this.busyCommand.set('share');
+    if (on) this.shareStoppedByCustomer.set(false);
     try {
       await this.channel.call(on ? 'screenshare.start' : 'screenshare.stop', undefined);
     } catch (e) {
@@ -566,6 +580,7 @@ export class TellerService {
 
     this.inCall.set(false);
     this.exitRequested.set(false);
+    this.shareStoppedByCustomer.set(false);
     this.sharingOwn.set(false);
     this.currentRoom.set('');
     this.customerName.set('');

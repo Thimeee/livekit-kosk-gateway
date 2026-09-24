@@ -102,6 +102,12 @@
       <vtm-audio-sink [track]="teller.remoteAudio()" />
 
       <aside class="call__side">
+        @if (teller.shareStoppedByCustomer() && !teller.kioskSharing()) {
+          <muk-alert variant="info" [dismissible]="false">
+            The customer stopped sharing their screen. You can ask again.
+          </muk-alert>
+        }
+
         @if (teller.exitRequested()) {
           <muk-alert variant="warning" [dismissible]="false">
             The customer has asked to finish.

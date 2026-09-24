@@ -153,8 +153,16 @@ work.
 | Method | Sent when | The teller does |
 |---|---|---|
 | `exit.request` | The customer presses *I'm finished* | Shows a standing alert. **The session keeps running.** |
+| `screenshare.ended` | The customer pressed the browser's own **Stop sharing** | Toast, plus a note beside the button until the teller asks again. Not sent when the teller stopped it. |
 
-It is a request, deliberately. The teller may be part way through something, and ending their call
+**The browser's "is sharing your screen" bar stays.** It is how the customer knows their screen
+is being watched, and hiding it programmatically removes that — the permission system refused it
+as security-weakening, which is the right call. Stopping is the customer's right; `screenshare.ended`
+is how the teller finds out instead of watching the tile quietly vanish. The kiosk tells the two
+stops apart with a flag set only while the teller's own `screenshare.stop` is running, because both
+end as the same unpublish.
+
+`exit.request` is a request, deliberately. The teller may be part way through something, and ending their call
 from the kiosk side is the kiosk's decision to make least of all.
 
 The kiosk marks its button as sent whether or not the call is acknowledged — the customer has done

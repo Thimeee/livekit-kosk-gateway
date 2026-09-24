@@ -1344,6 +1344,45 @@ not yet explained. Free memory was under 1 GB during every failing run.
 
 ---
 
+### D-032 {#d-032}
+**2026-09-24 · The customer may stop a screen share; the teller is told. And the kiosk no longer misses an early teller.**
+
+**The "is sharing your screen" bar is not hidden.** A Stop sharing button a customer can press
+looked like a problem for a kiosk. The bar was found (a `Chrome_WidgetWin_1` titled
+*"kiosk.vtm is sharing your screen."*) and hiding it from the host was attempted; the permission
+system refused it as security-weakening. It is right to: the bar is the only thing telling the
+customer their screen is being watched, and [D-028](#d-028) already recorded that in a bank this is
+usually a compliance requirement. WebView2's `ScreenCaptureStarting` offers no way to suppress it
+either — only to cancel the capture outright.
+
+So stopping stays the customer's right, and the teller is told. When the browser ends the capture
+the SDK unpublishes the share (`LocalParticipant.handleTrackEnded`); the kiosk sees
+`LocalTrackUnpublished` and sends **`screenshare.ended`**, unless the teller's own stop is in
+progress. The teller gets a toast and a note beside the button until they ask again.
+
+**Found while testing it — a real race, not a test artefact.** The kiosk switched to the call only
+on `ParticipantConnected`, which fires only for participants who arrive *after* you. The ring goes
+out when the session is created, before the kiosk has finished connecting, so a quick teller is
+often in the room first — and then the kiosk sat on *"Waiting for a teller…"* for ever while the
+teller sat in the call. Isolated by one variable: both sides joined the same room with the same SID
+every time, and the kiosk stuck only when it was the slower one (a headed browser, or WebView2).
+A slow branch network would do the same. The kiosk now checks `remoteParticipants` after connecting.
+The teller side already did this; the kiosk never had.
+
+This explains the scripted end-to-end failure left open in [D-031](#d-031) — the kiosk waiting while
+the teller was in the call. The *zero participants* reading from the API at the time is not
+explained by it and stays unexplained.
+
+**Verified**, headed kiosk with the capture flag, 9 checks: customer stop leaves the teller's view,
+the teller is told, the button offers to ask again, the call keeps running; asking again clears the
+note; the teller's own stop raises no customer notice. The race: two headed runs, kiosk in the call
+both times, where before it failed every time.
+
+`dotnet build` now clears `bin/webroot` before staging, so old hashed bundles do not pile up beside
+the current one.
+
+---
+
 ## 7. Work log
 
 Newest last. One line per piece of work. **Append only.**
@@ -1378,6 +1417,7 @@ Newest last. One line per piece of work. **Append only.**
 | 2026-09-23 | Shared command channel, typed contract, state resync and rejoin. The data channel is not pub/sub, and `server-leave` does not recover by itself ([D-029](#d-029)) |
 | 2026-09-23 | K-14 closed: a local watchdog tells the customer in ~1s instead of ~15s ([D-030](#d-030)) |
 | 2026-09-24 | WPF kiosk shell: small teller window beside the host app, bundled page, runtime config, stale-session reaper ([D-031](#d-031)) |
+| 2026-09-24 | Teller told when the customer stops a screen share; kiosk no longer misses a teller who joined first ([D-032](#d-032)) |
 
 ---
 

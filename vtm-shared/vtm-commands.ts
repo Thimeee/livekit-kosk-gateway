@@ -42,6 +42,7 @@ export const COMMANDS: Record<string, CommandMeta> = {
   'screenshare.stop': { cls: 1, direction: 'to-kiosk' },
   'state.get': { cls: 1, direction: 'to-kiosk' },
   'exit.request': { cls: 1, direction: 'to-teller' },
+  'screenshare.ended': { cls: 1, direction: 'to-teller' },
 };
 
 /** The names, taken from the payload map so the two can never drift apart. */
@@ -53,6 +54,14 @@ export interface Payloads {
   'screenshare.stop': { req: void; res: void };
   'state.get': { req: void; res: KioskState };
   'exit.request': { req: void; res: void };
+
+  /**
+   * The kiosk's screen share stopped without the teller asking for it - in practice the
+   * customer pressed the browser's own "Stop sharing". That bar is the browser telling the
+   * customer their screen is being watched, and it stays: stopping is their right. This is
+   * how the teller finds out, rather than watching the tile quietly disappear.
+   */
+  'screenshare.ended': { req: { by: 'customer' }; res: void };
 }
 
 /** Broadcast topics. Unlike RPC these are fire-and-forget and nobody has to be listening. */

@@ -4,6 +4,7 @@ import {
   Room,
   RoomEvent,
   Track,
+  type RemoteParticipant,
   type RemoteTrack,
   type LocalTrackPublication,
 } from 'livekit-client';
@@ -50,6 +51,13 @@ export class KioskService {
   /** Set while we are trying to get back into a room we were thrown out of. */
   private rejoinAttempt = 0;
   private rejoinTimer?: ReturnType<typeof setTimeout>;
+
+  /**
+   * True while a stop the teller asked for is in progress. It is the only way to tell that stop
+   * apart from the customer pressing the browser's own "Stop sharing" - both end as the same
+   * unpublish.
+   */
+  private tellerStoppingShare = false;
 
   readonly screen = signal<KioskScreen>('booting');
   readonly statusText = signal('Starting up…');
@@ -169,16 +177,7 @@ export class KioskService {
         if (track.kind === Track.Kind.Video) this.remoteVideo.set(undefined);
         else this.remoteAudio.set(undefined);
       })
-      .on(RoomEvent.ParticipantConnected, (p) => {
-        // The call starts when the teller arrives, not when their camera does. A teller
-        // with video off is still on the call, and a customer left staring at "waiting"
-        // while someone is talking to them is the worse failure.
-        this.tellerName.set(p.name || p.identity);
-        this.screen.set('incall');
-        this.statusText.set('');
-        // They may be rejoining and know nothing of what happened while they were away.
-        this.announce();
-      })
+      .on(RoomEvent.ParticipantConnected, (p) => this.onTellerPresent(p))
       .on(RoomEvent.ParticipantDisconnected, () => {
         this.tellerName.set('');
         this.remoteVideo.set(undefined);
@@ -197,6 +196,20 @@ export class KioskService {
       // The teller mutes this kiosk server-side, so the only honest source for these is
       // what LiveKit reports back about our own tracks.
       .on(RoomEvent.LocalTrackPublished, () => this.syncLocalState())
+      // The browser's "is sharing your screen" bar has a Stop sharing button. It stays: it is
+      // how the customer knows their screen is being watched, and stopping is their right. When
+      // they use it the SDK unpublishes the share (measured in LocalParticipant.handleTrackEnded),
+      // so this is where the teller gets told, instead of watching the tile quietly vanish.
+      .on(RoomEvent.LocalTrackUnpublished, (pub) => {
+        this.syncLocalState();
+        if (pub.source !== Track.Source.ScreenShare) return;
+
+        if (this.tellerStoppingShare) return;
+
+        void this.channel.call('screenshare.ended', { by: 'customer' }).catch(() => {
+          // The teller's own tile disappears either way; the message is a courtesy on top.
+        });
+      })
       // (publication, participant) - the participant is the second argument.
       .on(RoomEvent.TrackMuted, (_pub, p) => {
         if (p === room.localParticipant) this.syncLocalState();
@@ -237,6 +250,14 @@ export class KioskService {
       // ~15s before a cut cable is reported. That delay is tracked as K-14.
       peerConnectionTimeout: 10_000,
     });
+    // ParticipantConnected only fires for people who arrive AFTER we do. The ring goes out the
+    // moment the session is created, before this kiosk has finished connecting, so a quick
+    // teller is often in the room first - and then no event ever comes, and the customer sits
+    // on "waiting" while the teller sits in the call. Measured: it happened on every run with a
+    // slower kiosk (a headed browser, WebView2) and never with a fast one. Look, don't wait.
+    const already = [...room.remoteParticipants.values()][0];
+    if (already) this.onTellerPresent(already);
+
     await room.localParticipant.enableCameraAndMicrophone();
 
     // The teller's own video is the thing whose stopping means the link is gone. A camera the
@@ -247,6 +268,21 @@ export class KioskService {
     });
 
     this.syncLocalState();
+  }
+
+  /**
+   * The teller is in the room - whether they arrived after us, or were there before we were.
+   *
+   * The call starts when the teller arrives, not when their camera does. A teller with video
+   * off is still on the call, and a customer left staring at "waiting" while someone is talking
+   * to them is the worse failure.
+   */
+  private onTellerPresent(p: RemoteParticipant): void {
+    this.tellerName.set(p.name || p.identity);
+    this.screen.set('incall');
+    this.statusText.set('');
+    // They may be rejoining and know nothing of what happened while they were away.
+    this.announce();
   }
 
   /** Reads our own publications back, rather than assuming a call did what it was asked. */
@@ -279,7 +315,12 @@ export class KioskService {
     });
 
     this.channel.handle('screenshare.stop', async () => {
-      await this.room?.localParticipant.setScreenShareEnabled(false);
+      this.tellerStoppingShare = true;
+      try {
+        await this.room?.localParticipant.setScreenShareEnabled(false);
+      } finally {
+        this.tellerStoppingShare = false;
+      }
       this.syncLocalState();
     });
 
